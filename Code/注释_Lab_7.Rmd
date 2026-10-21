@@ -1,0 +1,243 @@
+---
+title: "Lab_7_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 7：建立与比较线性回归模型 / Building and comparing linear models
+
+中文：本注释版对应 Tutorial 7，按“房间类型 → 物业类型 → 房间数量与容量 → 评分”逐步解释价格。下面保留原文件的全部运行语句和顺序；注释解释代码真实行为，结果应以自己的数据和输出为准。
+
+English: This annotated version follows Tutorial 7, adding room type, property type, room counts/capacity, and review scores in stages. All original executable statements and their order are retained; interpretation must use your own data and output.
+
+中文运行前提：本文件没有加载 tidyverse、读取 CSV 或清洗数据的语句。运行前需按 Tutorial 1–2 准备 `listings`，加载 tidyverse，将 `room_type` 和 `property_type` 转为因子，按先前规则清洗价格、浴室数和缺失值。RStudio 中手动运行代码可使用当前环境，Knit 通常在独立环境运行，不能依赖 Global Environment；仅靠本文件无法保证独立 Knit 成功。相对路径以实际工作目录为准。
+
+English prerequisites: This file does not load tidyverse, read the CSV, or prepare the data. Prepare `listings` using Tutorials 1–2, load tidyverse, convert both type variables to factors, and apply the earlier cleaning rules first. Interactive execution may use the current session, whereas knitting normally uses a separate environment and cannot rely on Global Environment objects; this file alone is therefore not guaranteed to knit independently.
+
+中文特别检查：原代码在合并类别之前使用小写 `ref = "apartment"`，而原始数据通常是大写 `"Apartment"`，此处可能报错；下方已说明原因但保留原语句。所有价格系数使用 CSV 的货币单位，不能仅凭网页中的 `$` 或 `£` 确认币种。模型控制变量后的关系仍是统计关联，不能自动解释为因果效应。
+
+English checks: The original code requests lowercase `"apartment"` before collapsing categories, although the raw level is usually `"Apartment"`; the statement is retained and may error. Price coefficients use the unit recorded in the CSV, which cannot be established from inconsistent currency labels in the workbook. Adjusted associations are not automatically causal effects.
+
+```{r setup, include=FALSE}
+# 中文：setup 是代码块名称；include=FALSE 隐藏该块的代码和输出，但不会阻止执行。
+# English: setup names this chunk; include=FALSE hides its code/output without preventing execution.
+# 中文：echo=TRUE 让后续代码块默认在生成的报告中显示 R 代码。
+# English: echo=TRUE makes subsequent chunks display their R source by default.
+knitr::opts_chunk$set(echo = TRUE)
+
+# 中文：安装 texreg（回归表包）。这条原语句每次运行本块或 Knit 都会尝试安装。
+# English: Install texreg for regression tables; this original statement attempts installation on every run/knit.
+# 中文：需可用的网络、软件源和安装权限；通常应在 Console 一次性安装再用 library 加载。
+# English: A repository/network and installation permissions are required; normally installation is a one-time Console task.
+install.packages("texreg")
+```
+
+
+```{r}
+# 中文：基线模型 m1 仅以 room_type 解释 price；~ 左边是因变量，右边是解释变量。
+# English: Baseline m1 regresses price on room_type; the response is left of ~ and predictors are right of it.
+# 中文：%>% 将 listings 传入下一步；data=. 明确把管道数据作为 lm 的 data 参数。
+# English: %>% passes listings onwards, and data=. supplies that object to lm's data argument.
+# 中文：默认含截距、使用因子的首个水平作参照；截距是参照房型均价，各类别系数是与其的均价差。
+# English: With default treatment contrasts, the intercept is the reference-group mean and other coefficients are mean differences.
+# 中文：summary 列出估计值、标准误、t/p 值、R²和残差等；小 p 值不代表效应很大或有因果关系。
+# English: summary reports estimates, standard errors, t/p values, R-squared and residual information; significance is not effect size or causality.
+# Build model 1
+m1 <- listings %>%
+  lm(price ~ room_type, 
+     data = .) 
+
+# And pass to summary function to see regression output
+m1 %>% summary()
+```
+
+
+```{r}
+# 中文：$ 取出数据框的一列；levels 按因子水平顺序返回房型类别，而不是频数。
+# English: $ extracts a column; levels returns factor levels in order, not their frequencies.
+# 中文：默认 treatment 编码下首个水平为基准；请据实际输出确认，不能只假定是 Entire home/apt。
+# English: Under default treatment coding the first level is the reference; verify the actual output rather than assuming it.
+levels(listings$room_type)
+```
+
+
+```{r}
+# 中文：!= 表示“不等于”；filter 保留非 Shared room 的观测，listings 原对象不变。
+# English: != means not equal; filter keeps non-shared listings in a new object without changing listings.
+# 中文：t.test 的公式要求实际有观测的分组为两组；默认是双侧 Welch 检验，不假定两组方差相等。
+# English: The formula interface requires two observed groups; the default is a two-sided Welch test with unequal variances allowed.
+# 中文：输出包括两组均价、均价差置信区间和 p 值；H0 是总体均值相等，符号按输出中的组顺序解释。
+# English: Output includes group means, a confidence interval for their difference, and a p value for equal population means.
+# 中文：两组均价差与相应基线回归系数有关，但 Welch 标准误/自由度一般不等于普通同方差 OLS 检验。
+# English: The mean difference relates to the baseline regression coefficient, but Welch SEs/degrees of freedom need not equal ordinary OLS inference.
+# 3. Is the difference in price statistically significant?
+listings_subset <- filter(listings, room_type != "Shared room") 
+
+t.test(price ~ room_type, data = listings_subset)
+```
+
+
+```{r}
+# 中文：m2 加入 property_type；公式中的 + 表示加入加性主效应，并不包含交互项。
+# English: m2 adds property_type; + adds main effects and does not introduce interactions.
+# 中文：room_type 的系数现在是在控制物业类别后、相对参照房型的价格差。
+# English: Room-type coefficients now represent differences from the reference room type conditional on property type.
+# 中文：截距对应所有因子的参照类别组合；稀少类别可能产生较大标准误或秩亏，不能只看显著性。
+# English: The intercept describes the joint reference categories; sparse categories can produce large SEs or rank deficiency.
+# 中文：比较 m1/m2 时同时看系数、标准误、调整后 R²和样本数；增加变量并不保证样本外预测更好。
+# English: Compare coefficients, SEs, adjusted R-squared and sample size; extra predictors do not guarantee better out-of-sample prediction.
+# Build model 2 and then pass to summary function
+m2 <- listings %>%
+  lm(price ~ room_type + property_type,
+     data = .) 
+
+m2 %>%  summary()
+```
+
+
+```{r}
+# 中文：relevel 只改变参照水平，不合并类别；同一模型空间的拟合值和 R²应不变，但系数解释改变。
+# English: relevel changes the reference without merging categories; fitted values/R-squared stay the same while coefficients change interpretation.
+# 中文：注意原语句 ref="apartment" 区分大小写，且当前还未执行下方的 fct_collapse。
+# English: The original ref="apartment" is case-sensitive and occurs before fct_collapse below.
+# 中文：若 levels 中只有 "Apartment"，这条原语句会报 'ref' must be an existing level；应先核对真实水平。
+# English: If only "Apartment" exists, the original statement errors because ref must be an existing level; inspect actual levels first.
+# 中文：本注释版不改动此语句；报错意味着不能声称整篇文件在全新数据上可直接 Knit。
+# English: The executable statement is retained; this issue means the file is not assured to knit successfully from fresh raw data.
+# refactor reference level: recode to 'Apartment' for ease of interpretation
+
+listings$property_type <- relevel(listings$property_type, ref = "apartment") 
+
+# Build model 2 again and then pass to summary function
+m2 <- listings %>%
+  lm(price ~ room_type + property_type,
+     data = .) 
+
+m2 %>%  summary()
+```
+
+
+```{r}
+# 中文：fct_collapse 按有名称的向量将多个旧类别合并成 bespoke、apartment、house、hotel、rustic。
+# English: fct_collapse maps named vectors of old levels into five broader categories.
+# 中文：例如 apartment 是新类别名，c("Apartment",...) 列出归入该类的旧标签；旧标签必须准确匹配。
+# English: For example apartment names the new level and c("Apartment",...) lists its old labels; matching is exact.
+# 中文：mutate 修改 property_type，<- 将修改写回 listings；这会影响此后新建模型，不会追溯修改已拟合的 m1/m2。
+# English: mutate replaces property_type and <- saves it to listings; later models change, but existing fitted objects do not update automatically.
+# 中文：fct_count 列出新水平及频数；未列出的旧水平通常保留，未知旧标签可能产生警告，需检查输出。
+# English: fct_count shows levels and counts; unmapped levels normally remain and unknown labels may trigger warnings.
+# 中文：合并要有实质理由，不能只为了显著性；合并后需重新确认 levels 的首项，不能假定基准一定是 apartment。
+# English: Collapsing needs substantive justification, not significance chasing; recheck the first level rather than assuming apartment is the reference.
+listings <- listings %>% 
+  mutate(property_type = fct_collapse(property_type,
+                                      bespoke = c("Aparthotel", "Barn", "Boat", "Casa particular (Cuba)", "Earth house", "Hut", "Loft", "Tiny house", "Windmill", "Other" ),
+                                      apartment = c("Apartment", "Bed and breakfast", "Guest suite", "Serviced apartment", "Chalet", "Condominium"),
+                                      house = c("Bungalow", "Cottage", "Guesthouse", "House", "Townhouse", "Villa"),
+                                      hotel = c("Boutique hotel", "Hotel"),
+                                      rustic = c("Cabin", "Camper/RV", "Campsite", "Farm stay", "Hostel", "Tent")
+                                       )
+      )
+
+# check
+fct_count(listings$property_type)
+```
+
+
+```{r}
+# 中文：用合并后的 listings 重拟合 m2，覆盖原 m2；输出中物业系数现在对应新类别。
+# English: Refit and overwrite m2 using collapsed categories; property coefficients now describe the new groups.
+# 中文：这一步改变变量编码/分组，已不只是增加控制变量；比较前后模型需注明这个变化。
+# English: This changes grouping as well as the model representation; document it when comparing models.
+# 中文：检查房型系数变化、稀少类别标准误和样本数；单个系数不显著不能直接证明整个物业变量无用。
+# English: Examine room-type coefficients, sparse-category SEs and sample size; one insignificant coefficient does not show the entire factor is uninformative.
+m2 <- listings %>%
+  lm(price ~ room_type + property_type,
+     data = .) 
+
+m2 %>%  summary()
+```
+
+
+```{r}
+# 中文：m3 加入 bathrooms、bedrooms 和 accommodates，分别控制浴室数、卧室数及可容纳人数。
+# English: m3 adds bathrooms, bedrooms and accommodates to control for rooms and capacity.
+# 中文：数值变量系数是在其他变量保持不变时，每增加一单位与价格的平均差；线性加性形式是模型假设。
+# English: Numeric coefficients describe the average price difference for a one-unit increase holding other predictors fixed; additivity/linearity is assumed.
+# 中文：房间数与容量可能相关，影响系数标准误；在后续诊断中检查共线性，而不是凭直觉删变量。
+# English: Room counts and capacity may correlate and inflate SEs; assess collinearity in diagnostics rather than deleting variables by intuition.
+# model 3
+m3 <- listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates,
+     data = .) 
+
+m3 %>%
+  summary()
+```
+
+
+```{r}
+# 中文：library(texreg) 加载已安装的包；screenreg 在控制台样式表中并列展示多个模型。
+# English: library(texreg) loads the installed package; screenreg prints side-by-side models in text format.
+# 中文：注意此块重新赋值 m3，公式不再包含 accommodates，覆盖了上一块含容量的模型。
+# English: This chunk overwrites m3 with a formula that omits accommodates, replacing the previous capacity-adjusted model.
+# 中文：后续表里的 m3 指的是这里的新模型；不能按上一块的公式解释它。
+# English: Subsequent tables use this replacement m3 and must be interpreted using its actual formula.
+# 中文：list(m1,m2,m3) 将模型组成列表；括号行通常是标准误，星号依据默认阈值表示 p 值范围。
+# English: list groups fitted objects; parenthesised entries are normally SEs and stars follow default p-value cutoffs.
+# 中文：htmlreg 前有 #，所以它只是说明而不会执行；screenreg 输出与 HTML 表的呈现不同。
+# English: The commented htmlreg line does not execute; screenreg uses a different presentation from HTML tables.
+library(texreg)
+
+m3 <- listings  %>%  lm(price ~ room_type + property_type + bathrooms +
+bedrooms, data = .)
+
+# htmlreg(list(m1, m2, m3))
+
+screenreg(list(m1, m2, m3))
+```
+
+
+```{r}
+# 中文：m4 在房型、物业、房间数和容量之外增加评分；评分每增加 1 分的系数单位仍是价格单位。
+# English: m4 adds review score to types, rooms and capacity; its coefficient is in price units per score point.
+# 中文：lm 默认排除公式所需变量有缺失的行；评分缺失可能使 m4 样本小于 m1–m3。
+# English: lm normally drops rows missing any required variable; missing review scores may make m4's sample smaller.
+# 中文：m3→m4 此处同时加入 accommodates 和评分，并非只增加评分；系数变化也可能反映样本变化。
+# English: Here m3 to m4 adds both accommodates and review score, not score alone; coefficient changes may also reflect sample changes.
+# 中文：负评分系数不证明评分让价格降低，也不能单凭符号确定内生性；需结合测量、反向关系和遗漏变量分析。
+# English: A negative score coefficient does not establish causality or diagnose endogeneity; consider measurement, reverse relationships and omitted variables.
+m4 <- listings %>% lm(price ~ room_type + property_type + bathrooms +
+bedrooms + accommodates + review_scores_rating, data = .)
+
+m4 %>% summary()
+```
+
+
+```{r}
+# 中文：并排汇总最终保存的四个对象；空白系数单元表示该模型没有该项，并非该系数等于零。
+# English: Compare the four currently saved models; a blank entry means an omitted term, not a coefficient of zero.
+# 中文：先确认每列公式、参照类别和样本数再比较；样本不同时，R²差异不能完全归因于新增变量。
+# English: Check each formula, reference category and sample size first; with differing samples, R-squared changes cannot be attributed only to added predictors.
+screenreg(list(m1, m2, m3, m4))
+```
+
+
+```{r}
+# 中文：自定义表格：stars=0.05 只设一个显著性阈值；digits=2 控制显示精度而不改变模型估计。
+# English: stars=0.05 sets one significance cutoff; digits=2 controls displayed precision without changing estimates.
+# 中文：caption 给表命名，caption.above 请求标题在上方；这些呈现参数在不同输出函数/版本的支持可能不同。
+# English: caption names the table and caption.above requests placement above; support varies across output functions/versions.
+# 中文：groups 使用展示表中的系数行号加分组标签，2:3 是房型行，4:7 是物业行；参照类别或水平变化后须核对索引。
+# English: groups labels coefficient rows by position; recheck indices 2:3 and 4:7 after reference/level changes.
+# 中文：screenreg 是文本表；如需 HTML 表，应另行选择 htmlreg，不能认为标题参数会把文本表自动变成网页表格。
+# English: screenreg remains a text table; formatting arguments do not automatically turn it into an htmlreg table.
+screenreg(list(m1, m2, m3, m4),
+          stars = 0.05,
+          digits = 2, 
+          caption = "Table 2: Regression results. Dependent variable: Price",
+          caption.above = TRUE,
+          groups = list("Room Type" = 2:3, "Property Type" = 4:7)
+        )
+
+```
+

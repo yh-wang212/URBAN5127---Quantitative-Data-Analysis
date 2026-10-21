@@ -1,0 +1,3 @@
+"0","listings %>%"
+"0","  mutate(bedrooms = factor(bedrooms)) %>% "
+"0","  count(bedrooms)"

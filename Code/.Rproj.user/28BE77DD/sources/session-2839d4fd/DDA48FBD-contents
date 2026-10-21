@@ -1,0 +1,444 @@
+---
+title: "Lab_4_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("gridExtra")
+library(tidyverse)
+library(scales)
+
+
+```
+
+```{r}
+
+# load in our libraries
+library(tidyverse)
+
+# Read in our data
+listings <- read_csv("listings_edinburgh.csv") 
+```
+
+```{r}
+
+# recreate the changes from Lab Tutorials 1-2:
+
+# Tutorial 1: coerce room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+
+
+# Tutorial 2: filter out any extreme or questionable values
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+```
+
+```{r}
+
+glimpse(listings) # check our variable data types
+```
+
+```{r}
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(bedrooms)) +
+  geom_histogram() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(bedrooms)) +
+  geom_bar() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+```{r}
+listings %>%
+  mutate(bedrooms = factor(bedrooms)) %>%
+  ggplot(aes(bedrooms)) +
+  geom_bar() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+```{r}
+listings %>%
+  mutate(bedrooms = factor(bedrooms)) %>% 
+  count(bedrooms)
+```
+
+```{r}
+listings %>%
+  drop_na(bedrooms) %>% 
+  mutate(bedrooms = factor(bedrooms, levels = 0:10)) %>%
+  count(bedrooms) %>%
+  complete(bedrooms, fill = list(n = 0)) %>%
+  ggplot(aes(bedrooms, n)) +
+  geom_col() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+```{r}
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(review_scores_rating, price)) +
+  geom_point() +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(review_scores_rating, price)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price)) +
+  geom_jitter(alpha = 0.1) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price)) +
+  geom_jitter(alpha = 0.1) +
+  geom_smooth(se = FALSE) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price, colour = room_type)) +
+  geom_jitter(alpha = 0.1) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>% 
+  count(room_type)
+```
+
+```{r}
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price, colour = room_type)) +
+  geom_jitter(alpha = 0.1) +
+  geom_smooth() +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(x = property_type)) +
+  geom_bar() +
+    labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+levels(listings$property_type)
+```
+
+```{r}
+# ordered: low to high
+listings %>%
+  ggplot(aes(x = property_type)) +
+  geom_bar() +
+  coord_flip() +
+    labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+# ordered: low to high
+listings %>%
+  ggplot(aes(x = fct_infreq(property_type))) +
+  geom_bar() +
+  coord_flip() +
+    labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+# ordered: low to high
+listings %>%
+  ggplot(aes(x = fct_rev(fct_infreq(property_type)))) +
+  geom_bar() +
+  coord_flip() +
+  labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  count(neighbourhood_cleansed)
+```
+
+```{r}
+listings %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n)
+```
+
+```{r}
+listings %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n) %>% 
+  head(10)
+```
+
+```{r}
+listings %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(n) %>% 
+  tail(10)
+```
+
+```{r}
+glimpse(listings)
+```
+
+```{r}
+listings %>%
+  mutate(neighbourhood_cleansed = factor(neighbourhood_cleansed) %>% 
+           fct_infreq() %>% 
+           fct_rev()) %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n) %>% 
+  head(10) 
+```
+
+```{r}
+listings %>%
+  mutate(neighbourhood_cleansed = factor(neighbourhood_cleansed) %>% 
+           fct_infreq() %>% 
+           fct_rev()) %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n) %>% 
+  head(10) %>% # now pipe to ggplot
+  ggplot(aes(neighbourhood_cleansed, n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Airbnb listings by neighbourhood",
+       subtitle = "Top 10 neighbourhoods", 
+       x = "",
+       y = "",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot(width = 0.5) +
+  geom_violin(alpha = 0.2) +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot(width = 0.1) +
+  geom_violin(alpha = 0.2) +
+  scale_y_log10()  +
+  theme_minimal() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+```{r}
+#load library
+
+library(gridExtra)
+```
+
+```{r}
+# Step 1: Create your first plot
+
+plot1 <- listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+
+
+# Step 2: Create your first plot
+
+plot2 <- listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_violin() +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+
+# Step 3: Now compare them side by side using the grid.arrange function from the gridExtra package:
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+```{r}
+# Default
+plot1 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar() + 
+  labs(x = "Room Type", y = "Count")
+
+# Add the position argument in geom_bar() function
+plot2 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar(position = "identity") + # note the quotes
+  labs(x = "Room Type", y = "Count")
+
+# compare them
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+```{r}
+# Default
+plot1 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar() + 
+  labs(x = "Room Type", y = "Count")
+
+# Add the position argument in geom_bar() function
+plot2 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar(position = "identity") + # note the quotes
+  labs(x = "Room Type", y = "Count")
+
+# compare them
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+```{r}
+listings %>% 
+ggplot(aes(x = room_type, fill = property_type)) + # Point 1
+  geom_bar(position = "fill") + # Point 2: note the quotes
+  labs(x = "Room Type", y = "Count")
+```
+
+```{r}
+listings %>% 
+ggplot(aes(x = room_type, fill = property_type)) +
+  geom_bar(position = "fill") + 
+  scale_y_continuous(labels = scales::percent) + # Point 3
+  labs(title = "My Title",
+       fill = "Property Type", # Point 2
+    x = "Room Type", 
+    y = "Proportion") # Point 1
+```
+
+
+```{r}
+listings %>% 
+ggplot(aes(x = room_type, fill = property_type)) +
+  geom_bar(position = "dodge") + 
+    labs(title = "My Title",
+       fill = "Property Type", # Point 2
+    x = "Room Type", 
+    y = "Proportion") # Point 1
+```

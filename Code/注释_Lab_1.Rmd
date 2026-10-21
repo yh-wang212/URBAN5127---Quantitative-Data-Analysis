@@ -1,0 +1,127 @@
+---
+title: "Lab_1_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 1：读取和检查数据 / Reading and inspecting data
+
+中文：本文件对应 Tutorial 1，依次演示安装与加载包、读取 CSV、检查变量类型，以及将分类变量转换为因子。代码按原练习保留；中文和英文说明帮助理解每一步的作用。运行前确认 `listings_edinburgh.csv` 位于当前工作目录；在此文件的常规 Knit 设置中，通常是这个 Rmd 所在的 `Code` 文件夹。重新 Knit 会重新执行各代码块，不应依赖之前在 Console 中创建的对象。
+
+English: This file follows Tutorial 1: installing and loading packages, importing a CSV, inspecting variable types, and converting categorical variables to factors. The original exercise code is retained with bilingual explanations. The CSV must be available in the working directory, normally the `Code` folder containing this Rmd when using the usual Knit settings. Knitting reruns the chunks, so the document should recreate the objects it needs.
+
+中文：`price` 的货币单位和各变量定义应以数据说明为准；后续教程图中的 `$` 标注本身不能证明数据以美元计价。行数、列数和类别数也应以当前 CSV 的实际输出为准。
+
+English: Confirm currency and variable definitions from the data documentation; a `$` label in later tutorial figures does not establish the currency. Check the current CSV rather than assuming that its row, column, or category counts always match the workbook.
+
+## 0. 文档设置 / Document setup
+
+```{r setup, include=FALSE}
+# 中文：setup 是代码块名称；include=FALSE 仍会运行本块，但不把本块代码或结果放入报告。
+# English: setup names the chunk; include=FALSE runs it while hiding its code and results in the report.
+# 中文：全局 echo=TRUE 使后续代码块在报告中显示源代码，便于复现；这不会自动打印所有中间对象。
+# English: Global echo=TRUE displays source code in later chunks for reproducibility; it does not print every intermediate object.
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. 安装包与加载包 / Installing and loading a package
+
+中文：安装是把包写入本机 R 包库，通常只需做一次；加载是让当前 R 会话可以调用包中的函数，每个新会话都需要。下面安装命令被 `#` 注释掉，因此 Knit 不会安装软件包。
+
+English: Installation writes a package to an R library and usually happens once. Loading makes its functions available in the current R session and must be repeated in a new session. The installation command below is commented out and will not install anything during Knit.
+
+```{r}
+# 中文：如尚未安装 tidyverse，可在 RStudio Console 手动执行下方命令（去掉 #）。
+# English: If tidyverse is not installed, run the command below manually in the RStudio Console without the #.
+# you must run this in the console not the script
+# install.packages("tidyverse") 
+```
+
+
+```{r}
+# 中文：tidyverse 会加载 readr、dplyr、ggplot2 等工具；本课主要使用 read_csv()、mutate() 和 glimpse()。
+# English: tidyverse attaches tools including readr, dplyr, and ggplot2; this lab uses read_csv(), mutate(), and glimpse().
+# 中文：若提示找不到包，应先安装；library() 本身不会下载或安装包。
+# English: If the package is missing, install it first; library() does not download or install it.
+# load the tidyverse package 
+library(tidyverse)
+```
+
+## 2. 读取 CSV 与保存对象 / Importing the CSV and assigning an object
+
+中文：CSV 是逗号分隔的文本数据。`read_csv()` 读取后通常返回 tibble，并根据内容推断列类型；推断结果仍需要核对。读取文件不会修改磁盘上的 CSV。
+
+English: A CSV stores comma-separated text data. `read_csv()` normally returns a tibble and infers column types from the data; those inferred types still need checking. Importing does not alter the CSV on disk.
+
+```{r}
+# 中文：这里没有赋值符号，读取结果会打印出来，但不会创建名为 listings 的对象。
+# English: Without assignment, the imported result is printed but no object named listings is created.
+# 中文：引号内是相对文件路径；找不到文件时应检查工作目录和文件名，而不是变量转换语句。
+# English: The quoted text is a relative path; if the file is not found, check the working directory and filename.
+read_csv("listings_edinburgh.csv")
+```
+
+
+```{r}
+# 中文：<- 把右边读取到的数据赋给左边的 listings；后续分析通过这个对象访问数据。
+# English: <- assigns the imported data on the right to listings on the left, making it available for later analysis.
+# 中文：赋值保存在当前会话内存中，并不等于永久存盘；重新运行本行会重新读取并覆盖 listings。
+# English: Assignment stores the object in session memory, not permanently on disk; rerunning this line reloads and overwrites listings.
+# read in the dataset
+listings  <- read_csv("listings_edinburgh.csv")
+```
+
+## 3. 检查数据结构 / Inspecting the data structure
+
+```{r}
+# 中文：View() 的 V 必须大写；在交互式 RStudio 中打开表格查看器，适合人工浏览、排序和核对。
+# English: View() has a capital V and opens a spreadsheet-style viewer in interactive RStudio for manual inspection.
+# 中文：View() 属于交互查看操作，在无图形界面的批处理或某些 Knit 环境中可能不可用。
+# English: View() is interactive and may be unavailable in headless processing or some Knit environments.
+# 中文：glimpse() 在文本输出中展示行数、列数、每列类型和部分值；<chr> 是文本，<dbl> 是双精度数值。
+# English: glimpse() prints dimensions, column types, and sample values; <chr> means character and <dbl> means double-precision numeric.
+# 中文：每行表示一个房源，每列表示一个变量；查看实际输出，确认读取过程没有把整行误作一个字段。
+# English: Each row represents a listing and each column a variable; check the output to confirm that the file was split into columns correctly.
+# look at your dataset: 
+View(listings)
+glimpse(listings)
+```
+
+## 4. 将分类变量转换为因子 / Converting categorical variables to factors
+
+中文：`room_type` 表示房间类别，而不是可做加减的数量。R 的因子使用“水平”（levels）表示类别。`factor()` 不改变类别文字的含义，也不会把类别变成有实际数量含义的连续数值。`bathrooms` 可能包含 0.5 等有意义的编码，不能仅因其名称含“数量”就强制转为整数。
+
+English: `room_type` identifies categories rather than quantities to add or subtract. A factor represents those categories using levels. `factor()` does not change their meaning or turn them into a continuous quantity. Values such as 0.5 bathrooms may be meaningful in the data definition, so do not force counts to integers without checking the documentation.
+
+```{r}
+# 中文：mutate(数据, 列名 = 新表达式) 创建或替换一列；factor(room_type) 将文本类别转换为因子。
+# English: mutate(data, column = expression) creates or replaces a column; factor(room_type) converts its categories to a factor.
+# 中文：这里把结果重新赋给 listings，因此转换会保留供后续代码使用；其余列仍在数据中。
+# English: Assigning the result back to listings retains the conversion for later chunks and keeps the other columns.
+# change room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type))
+```
+
+
+```{r}
+# 中文：这是转换后的验证步骤：room_type 应显示为 <fct>，property_type 在下一块之前仍可能是 <chr>。
+# English: This verifies the conversion: room_type should show <fct>, while property_type may still show <chr> until the next chunk.
+# 中文：类型转换不应改变数据的行数或列数；若维度变化，应检查是否执行了其他筛选操作。
+# English: Type conversion should not change the number of rows or columns; a dimension change suggests another operation was applied.
+glimpse(listings)
+```
+
+
+```{r}
+# 中文：在同一个 mutate() 中用逗号分隔多个列转换，可以一次处理两列。
+# English: Separate multiple column transformations with commas inside one mutate() call to convert both columns together.
+# 中文：room_type 再次转换为 factor 通常保持已有类别；property_type 也转换为因子，以便后续分组和绘图。
+# English: Reapplying factor() to room_type normally retains its categories; property_type becomes a factor for later grouping and plotting.
+# 中文：执行后可在 Console 检查 levels(listings$room_type)，确认类别名称；$ 用来选取单个列向量。
+# English: Afterwards, inspect levels(listings$room_type) in the Console to verify category names; $ extracts a single column vector.
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+

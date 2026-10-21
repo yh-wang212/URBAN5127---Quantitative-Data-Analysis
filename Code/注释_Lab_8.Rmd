@@ -1,0 +1,331 @@
+---
+title: "Lab_8_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 8：回归诊断 I / Regression diagnostics I
+
+中文：本注释版参考 Tutorial 8，按“有影响的观测 → 函数形式 → 残差分布 → 异方差 → 共线性”检查线性回归。原有运行语句和执行顺序全部保留；图形与检验用于定位问题和设计敏感性分析，不能机械决定删除样本。
+
+English: Following Tutorial 8, this file checks influence, functional form, residual distribution, heteroscedasticity and collinearity. All original executable statements and their order are retained. Diagnostics guide investigation and sensitivity analysis rather than automatically deciding which observations to delete.
+
+中文运行前提：数据文件 `listings_edinburgh.csv` 需能从实际工作目录找到；tidyverse、texreg、car、lmtest 需预先安装。按顺序执行。本实验重新读取原始数据，因此 `property_type` 使用未合并的原始类别，与 Lab 7 合并类别后的模型并不完全相同。
+
+English prerequisites: The CSV must be reachable from the actual working directory, and tidyverse, texreg, car and lmtest must already be installed. Run chunks in order. This file rereads raw data and uses the original uncollapsed property categories, so it does not exactly reproduce Lab 7's collapsed-category model.
+
+中文解释原则：所有结果以实际输出为准；价格单位应查数据说明。高杠杆不等于高影响；异方差本身并不必然使外生条件下的 OLS 系数有偏，但通常使常规标准误不可靠。常规图形和检验也不能单独证明无遗漏变量、外生性或因果关系。
+
+English interpretation: Use actual output and verify price units in the data documentation. High leverage is not the same as high influence. Heteroscedasticity alone need not bias OLS coefficients under exogeneity, but conventional SEs may be unreliable. These diagnostics do not establish exogeneity, absence of omitted variables or causality.
+
+```{r setup, include=FALSE}
+# 中文：include=FALSE 隐藏此块代码及输出但仍执行；echo=TRUE 令后续代码块默认显示代码。
+# English: include=FALSE hides this chunk while still executing it; echo=TRUE displays later chunks' source by default.
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# 中文：tidyverse 提供导入、数据整理和绘图函数；texreg 用于回归表，此文件加载后未直接调用其制表函数。
+# English: tidyverse supplies import/wrangling/plotting tools; texreg supports regression tables but is not directly used below.
+# 中文：read_csv 返回 tibble，<- 将其保存为 listings；相对文件名不是相对于任意打开的文件夹。
+# English: read_csv returns a tibble and <- assigns it to listings; a relative filename is resolved from the working directory.
+# 中文：如果出现找不到文件或包的错误，先检查工作目录与安装情况，不要依赖其他 Lab 的环境。
+# English: If a file or package is unavailable, check paths and installation rather than relying on another Lab's session.
+library(tidyverse)
+library(texreg) # for comparing models
+
+# Read in data
+listings <- read_csv("listings_edinburgh.csv") # remember your file name and path may be different
+```
+
+
+```{r}
+# 中文：filter 同时要求 25≤price≤1000、bathrooms≤5；多个条件以“且”连接。
+# English: filter jointly requires 25<=price<=1000 and bathrooms<=5; conditions are combined with AND.
+# 中文：drop_na 仅检查指定三列，删除 price/bedrooms/bathrooms 中任意一个缺失的行，并非删除所有变量缺失。
+# English: drop_na checks only its three named columns, not missingness in every variable.
+# 中文：factor 将两类文本变量转成分类变量；保留原始物业标签，不采用 Lab 7 的五类合并方案。
+# English: factor converts the two text columns into categorical variables without applying Lab 7's five-group collapse.
+# 中文：<- 覆盖 listings；价格截断会改变目标样本，并可能在残差图中造成边界，解释时需注明。
+# English: Assignment overwrites listings; price truncation changes the target sample and can create residual-plot boundaries.
+# Filtering
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms)
+
+# Coercing 
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+
+
+```{r}
+# 中文：m4 是含六个解释变量的价格模型；公式的 + 是加性主效应，data=. 是管道传入的数据。
+# English: m4 models price using six predictors with additive main effects; data=. supplies the piped data.
+# 中文：lm 通常按完整案例拟合，评分等变量缺失会进一步删行；诊断图只针对实际参与拟合的观测。
+# English: lm normally uses complete cases, dropping further rows with missing scores or other predictors; diagnostics concern this fitted sample.
+# 中文：因子基准由水平顺序和对比编码决定；原始 property_type 的基准不应假定与 Lab 7 相同。
+# English: Factor references depend on level order/contrasts and need not match Lab 7's reference after collapsing.
+# Model 4:
+m4 <- listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .) 
+```
+
+
+```{r}
+# 中文：重新拟合同一公式后，plot.lm(which=5) 绘制标准化残差对杠杆值图，通常带 Cook 距离等值线。
+# English: Refit the same formula and use plot.lm(which=5) for standardised residuals versus leverage with Cook-distance contours.
+# 中文：大残差表示响应偏离拟合，高杠杆表示解释变量组合不寻常；两者结合才可能产生较大影响。
+# English: A large residual indicates response discrepancy; high leverage indicates an unusual predictor pattern; together they may imply influence.
+# 中文：Cook 距离 0.5/1 等仅是经验提示，不是自动删行规则；先检查原始记录并比较有/无这些记录的模型。
+# English: Cook-distance markers such as 0.5/1 are heuristics, not automatic deletion rules; inspect records and perform sensitivity comparisons.
+# 中文：杠杆等于1时标准化残差可能不可定义并出现警告，常与极稀少类别有关，需单独核查。
+# English: Leverage of one can make standardised residuals undefined and trigger warnings, often with extremely sparse categories.
+# Diagnostics 1: Influential Outliers
+
+# 1. checking for outliers: model 4
+listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .)  %>%
+  plot(which = 5)
+```
+
+
+```{r}
+# 中文：直接对已保存 m4 作同一张诊断图，避免重复拟合；在数据和公式相同时应与上块一致。
+# English: Plot saved m4 directly to avoid refitting; this matches the previous plot when data and formula are identical.
+# 中文：m4 保存的是拟合时的模型；后来修改 listings 不会自动更新它，必须重拟合才改变模型。
+# English: m4 stores the fitted model; later changes to listings do not update it without refitting.
+# or, alternatively, we could simply pipe the created object to the plot() function
+# this is what I'll use from now on
+m4 %>% plot(which = 5) # model 4
+```
+
+
+```{r}
+# 中文：rownames_to_column 把当前数据的行名复制为字符列 row_numbers，并返回 listings_rows。
+# English: rownames_to_column copies current row names into the character column row_numbers in a new object.
+# 中文：这不是数据自带的永久 ID。过滤、重排和 tibble 行名重置都可能改变其对应关系。
+# English: This is not a stable source identifier; filtering, reordering and tibble row-name resets can change correspondence.
+# 中文：诊断标签属于模型所用案例的标签，且 lm 可能删缺失行；不能无核验地把图中标签当成当前数据行位置。
+# English: Diagnostic labels refer to fitted cases, possibly after lm omitted missing rows; they are not automatically current row positions.
+# 中文：删除前应核对模型案例标签、model.frame(m4)、原始记录和稳定 ID（若有），确认确实指向同一房源。
+# English: Before deletion, reconcile model-case labels, model.frame(m4), source records and stable IDs if available.
+# two arguments: my dataset, what I want the new column to be called
+listings_rows <- rownames_to_column(listings, "row_numbers") # eases checking influential outliers
+```
+
+
+```{r}
+# 中文：!= 排除指定标签，& 要求两条件都为真；这里删除当前 row_numbers 为 "8" 或 "8651" 的记录。
+# English: != excludes a label and & combines both conditions; this removes current row labels "8" and "8651".
+# 中文：教程把它们称为两条船，但在不同数据版本/处理顺序中未必仍是 Boat，必须先检查，不能把示例行号当永久 ID。
+# English: The workbook calls them boats, but data versions/order may differ; verify rather than treating example row numbers as permanent IDs.
+# 中文：m4_drop 保留删除后的敏感性模型；m4 原模型仍在。有效极端观测不应只因异常就删除。
+# English: m4_drop stores the sensitivity fit while m4 remains; valid extreme observations should not be deleted merely for being unusual.
+# filter out the two boats
+listings_rows  <-  listings_rows %>% 
+  filter(row_numbers!= "8" & row_numbers!= "8651")
+
+# rerun model 4 now and save it to a new object
+m4_drop <- listings_rows %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .)  
+```
+
+
+```{r}
+# 中文：原始 m4 的摘要作为比较基准，查看重点系数、标准误、样本数和残差尺度。
+# English: Summarise original m4 as the comparison baseline, checking key coefficients, SEs, sample size and residual scale.
+# 中文：先记录参数再对照 m4_drop，避免仅凭一颗显著性星号变化判断影响程度。
+# English: Compare parameter values with m4_drop rather than judging influence only from significance stars.
+m4 %>% summary()
+```
+
+
+```{r}
+# 中文：查看删去指定记录后的模型摘要；若删除某一稀少类别的全部案例，该类别系数也可能消失。
+# English: Inspect the sensitivity model; deleting every case in a sparse category can remove that coefficient altogether.
+# 中文：比较共同系数的方向、大小和不确定性，并报告删除理由；样本不同使拟合指标并非完全可比。
+# English: Compare shared coefficients' direction, size and uncertainty, documenting exclusions; fit statistics are not fully comparable across samples.
+m4_drop %>% summary()
+```
+
+
+```{r}
+# 中文：which=1 是残差对拟合值图；理想均值模式在0附近，无系统曲线。
+# English: which=1 plots residuals against fitted values; the mean pattern should be approximately flat near zero.
+# 中文：平滑线弯曲提示函数形式问题；漏斗状散布提示方差变化。二者应分别判断。
+# English: Curvature suggests functional-form problems, whereas fanning suggests changing variance; assess them separately.
+# 中文：图形只是诊断证据；价格筛选边界、稀少类别和遗漏变量也可能影响图形。
+# English: This is diagnostic evidence, influenced also by outcome truncation, sparse categories and omitted predictors.
+# model 4: residuals vs fitted values plot
+m4 %>% plot(which = 1)
+```
+
+
+```{r}
+# 中文：aes 映射评分到横轴、价格到纵轴；geom_point 绘点，geom_smooth 添加平滑趋势和默认置信带。
+# English: aes maps score to x and price to y; geom_point draws points and geom_smooth adds a smooth with its default confidence band.
+# 中文：这是未控制其他变量的二元图，不等同于 m4 中评分的条件关系；缺失绘图值通常会被移除并可能警告。
+# English: This is an unadjusted bivariate plot, not m4's conditional score relationship; missing plotting values are normally removed with possible warnings.
+# 中文：平滑方法可能随样本量/版本改变；趋势形状不代表评分对价格的因果影响。
+# English: The smoother can depend on sample size/version and does not establish a causal score effect.
+listings %>% 
+  ggplot(aes(x = review_scores_rating, y = price)) +
+  geom_point() +
+  geom_smooth()
+```
+
+
+```{r}
+# 中文：加载 car，提供 crPlots 和 vif。安装语句已注释，不会自动安装缺少的包。
+# English: Load car for crPlots and vif; the commented installation line does not install a missing package.
+# 中文：car 可能产生与 tidyverse 同名函数的遮蔽提示；必要时通过 包名::函数名 明确使用哪个函数。
+# English: car may report masked function names shared with tidyverse; qualify functions with package::function when needed.
+# install.packages("car")
+library(car)
+```
+
+
+```{r}
+# 中文：component-plus-residual 图把某数值预测变量的线性分量与模型残差相加，辅助检查其条件函数形式。
+# English: Component-plus-residual plots combine a numeric predictor's fitted component with residuals to inspect conditional functional form.
+# 中文：比较线性拟合与平滑趋势，明显偏离可能需要变换/非线性项；不是对因子编码值作连续斜率解释。
+# English: Compare linear and smoothed patterns; divergence can motivate transformations/nonlinear terms, not treating factor codes as continuous slopes.
+# 中文：对多个图同时检查时应结合实质知识，不能仅凭个别弯曲就断言模型的所有系数都有偏。
+# English: Interpret all plots with substantive knowledge; a local curve alone does not prove every coefficient is biased.
+crPlots(m4)
+```
+
+
+```{r}
+# 中文：lmtest 提供 resettest 和 bptest；加载已有包不会改变 m4 的估计值。
+# English: lmtest supplies resettest and bptest; loading it does not change m4's estimates.
+# 中文：# install.packages 是示例注释，如尚未安装需在 Console 手动处理。
+# English: The commented installation example is inactive; install a missing package separately in the Console.
+# install.packages ("lmtest")
+library(lmtest)
+```
+
+
+```{r}
+# 中文：Ramsey RESET 用拟合值的2次、3次幂扩展模型，检验这些附加项系数是否联合为0。
+# English: Ramsey RESET augments the model with squared/cubed fitted values and tests whether their coefficients are jointly zero.
+# 中文：power=2:3 指定幂次，type="fitted" 指定使用拟合值；检验提示函数形式/遗漏结构问题，不指出是哪一变量。
+# English: power=2:3 selects powers and type="fitted" uses fitted values; rejection signals misspecification without identifying its source.
+# 中文：小 p 值是反对该零假设的证据；大 p 值仅表示未拒绝，不能证明模型完全正确或不存在遗漏变量。
+# English: Small p values give evidence against the null; large p values mean non-rejection, not proof of correct specification.
+# 中文：常规检验还受误差结构影响，应与残差图、异方差检查和研究背景共同判断。
+# English: Conventional inference also depends on error assumptions, so combine it with plots, variance checks and substantive reasoning.
+resettest(m4, power = 2:3, type = "fitted")
+```
+
+
+```{r}
+# 中文：which=2 比较标准化残差分位数与理论正态分位数；接近参考线表示分布较接近正态。
+# English: which=2 compares standardised residual quantiles with theoretical normal quantiles; alignment suggests approximate normality.
+# 中文：尾部偏离提示厚尾/异常值/偏态；这检查残差，不要求 price 或每个解释变量本身正态。
+# English: Tail departures suggest heavy tails, outliers or skewness; this concerns residuals, not normality of price or predictors themselves.
+# 中文：块内两种写法画同一类图；后者使用已拟合 m4，更直接。
+# English: Both forms draw the same diagnostic; the second reuses fitted m4 more directly.
+# 中文：正态性与小样本精确 t/F 推断有关，不是外生条件下 OLS 无偏所必需；仍需关注大样本和依赖结构。
+# English: Normality supports exact small-sample t/F inference but is not required for OLS unbiasedness under exogeneity.
+# model 4: Q-Q plot
+listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .) %>%
+  plot(which = 2) # gives us the Q-Q plot
+
+# or
+m4 %>% plot(which = 2)
+```
+
+
+```{r}
+# 中文：再次使用残差对拟合值图，这次重点观察纵向散布宽度是否随拟合值变化。
+# English: Reuse residuals versus fitted values, now focusing on changes in vertical spread across fitted values.
+# 中文：同方差表示条件误差方差近似恒定；漏斗形可提示异方差，但应同时排查均值函数形式错误。
+# English: Homoscedasticity means approximately constant conditional error variance; fanning suggests heteroscedasticity, while mean misspecification also needs checking.
+# 1. Residuals vs fitted plot
+m4 %>% plot(which = 1)
+```
+
+
+```{r}
+# 中文：重复 library(lmtest) 通常不会再次安装或重拟合模型，只保证包已加载。
+# English: Repeating library(lmtest) normally neither reinstalls the package nor refits models; it ensures availability.
+# 中文：原文件在教学步骤中分散加载包，整理正式报告时通常集中放在最开始的准备块。
+# English: The original teaching file loads packages incrementally; a final report normally groups these in its preparation chunk.
+library(lmtest) 
+
+# make sure this is loaded in the very first chunk: the setup chunk at the very beginning of the document. I am doing it here only to draw your attention to the fact we need to use it i.e. install it and then load the library.
+```
+
+
+```{r}
+# 中文：在 listings_rows 上重拟合后做 Breusch–Pagan 检验；此对象已在前面删除两条指定记录。
+# English: Refit on listings_rows and run Breusch-Pagan; this object already excludes the two specified records.
+# 中文：因此这里检验的是删记录后的模型，不是下块的原始 m4；两块不能简单称为完全相同的替代写法。
+# English: This tests the reduced-data model, not original m4 below; the chunks are not strictly equivalent alternatives.
+# 中文：H0 为条件误差方差恒定；bptest 默认使用 studentized 版本，小 p 值提示异方差。
+# English: H0 is constant conditional error variance; bptest defaults to a studentised version, with small p values indicating heteroscedasticity.
+# 中文：它不衡量系数有偏方向，也不意味着常规标准误一定偏高；偏高或偏低均可能。
+# English: It does not identify coefficient bias direction, and conventional SEs can be too high or too low.
+listings_rows %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .) %>%
+  bptest() # runs the Breusch-Pagan test
+```
+
+
+```{r}
+# 中文：对保留原样本的 m4 做同方差检验；根据其实际 p 值报告是否拒绝H0。
+# English: Test constant variance for original-sample m4, reporting rejection/non-rejection from its actual p value.
+# 中文：若有异方差，可在合理均值模型和独立观测条件下考虑稳健标准误；这不自动修复内生性或错误函数形式。
+# English: Robust SEs may help under a sound mean model and independent observations, but do not repair endogeneity or misspecified functional form.
+# or 
+m4 %>% bptest()
+```
+
+
+```{r}
+# 中文：默认 Pearson 相关检验，检查 bedrooms 与 accommodates 的线性关联；$ 分别提取两个数值列。
+# English: Default Pearson correlation tests the linear relationship between bedrooms and accommodates, extracted with $.
+# 中文：r 在 -1 到1之间，不是“解释了多少百分比”；置信区间和 p 值应与效应大小一起阅读。
+# English: r ranges from -1 to 1 and is not a percentage explained; read its confidence interval/p value alongside magnitude.
+# 中文：高二元相关提示可能共线，但回归多重共线性应根据完整设计矩阵判断；相关不代表因果。
+# English: High pairwise correlation flags possible collinearity, assessed using the full design matrix; correlation is not causation.
+cor.test(listings$bedrooms, listings$accommodates)
+```
+
+
+```{r}
+# 中文：car::vif 检查解释项与其他解释项的重叠，反映相关性导致的系数方差膨胀。
+# English: car::vif measures overlap among predictors and the resulting inflation of coefficient variance.
+# 中文：一个自由度的项通常可解释普通 VIF；多水平因子通常给 GVIF、Df 和 GVIF^(1/(2*Df))。
+# English: One-df terms correspond to ordinary VIF; multi-level factors normally yield GVIF, Df and GVIF^(1/(2*Df)).
+# 中文：不可把多自由度原始 GVIF 与普通 VIF 的5/10阈值直接比较；调整后的列在平方根尺度，可与 sqrt(5) 等对应比较。
+# English: Do not compare raw multi-df GVIF directly with ordinary VIF cutoffs 5/10; the adjusted column is on a square-root scale, comparable to sqrt(5), for example.
+# 中文：阈值只是经验参考，需结合标准误、样本量和理论；共线性会降低精度，单独存在时不必然使OLS系数有偏。
+# English: Cutoffs are heuristics used with SEs, sample size and theory; collinearity reduces precision but alone need not bias OLS coefficients.
+listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .) %>%
+  vif()
+```
+
+
+```{r}
+# 中文：直接对 m4 调用 vif，与上块在数据和模型相同情况下等价，避免重复拟合。
+# English: Apply vif directly to m4, equivalent to the preceding fit when data/formula match, without refitting.
+# 中文：检查别名系数/完全共线时可能无法计算VIF；不要把报错解释为“没有共线性”。
+# English: Aliased coefficients/perfect collinearity can prevent VIF calculation; an error is not evidence of no collinearity.
+# or simply
+
+m4 %>% 
+  vif()
+```
+

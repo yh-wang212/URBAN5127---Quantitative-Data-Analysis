@@ -1,0 +1,140 @@
+---
+title: "Lab_6_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 6：方差分析与相关 / ANOVA and correlation
+
+中文：本课用三个房间类型比较价格均值，并检验价格与评分的 Pearson 相关。以下说明逐块解释图形、汇总、假设、参数和输出；原代码保持不变。
+
+English: This lesson compares prices across three room types and tests Pearson correlation between price and review ratings. The notes explain plots, summaries, hypotheses, arguments and output chunk by chunk; original code is retained.
+
+中文：运行前提：本文件原来没有加载包或创建 `listings`。交互运行前先加载 tidyverse 并按 Tutorial 1–2 读取和清理数据，保留三个房间类型。普通 Knit 通常使用新环境，已有控制台对象不会自动带入，因此独立 Knit 需另外补充这些 setup 步骤。配套教程见 [Tutorial 6](../Markdown/Tutorial_6.md)。
+
+English: Prerequisite: the original file neither loads packages nor creates `listings`. Before interactive execution, attach tidyverse and read/clean the data as in Tutorials 1–2, retaining all three room types. Ordinary knitting typically uses a fresh environment, so console objects are not automatically available; standalone knitting requires those setup steps. See [Tutorial 6](../Markdown/Tutorial_6.md).
+
+## 1. 设置与运行依赖 / Options and prerequisites
+
+```{r setup, include=FALSE}
+# 中文：include=FALSE隐藏setup块的代码与结果但仍执行；echo=TRUE让后续块默认显示代码。
+# EN: include=FALSE hides setup code and results while still running it; echo=TRUE displays subsequent code by default.
+# 中文：本文件原代码未加载tidyverse、未读取CSV，也未建立listings；单独在全新R会话或常规Knit环境中执行会缺少这些依赖。
+# EN: The original file neither attaches tidyverse nor reads the CSV or creates listings; a fresh R session or ordinary Knit environment lacks these prerequisites.
+# 中文：运行后续块前应先准备Tutorial 1–2同样清理过的listings，加载tidyverse，并把room_type转为含三类的因子；不能用上课的两类listings_subset替代。
+# EN: Before later chunks, prepare listings with Tutorial 1–2 cleaning, attach tidyverse and make room_type a three-category factor; do not substitute the two-group listings_subset.
+# 中文：本注释版保留原执行语句，未把依赖补入运行代码；若要独立Knit，应另行补充包加载、CSV读取和清理的setup步骤。
+# EN: This annotated version retains the executable statements without adding dependencies; standalone knitting requires an explicit setup that loads packages, reads the CSV and cleans data.
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 2. 比较三类房间价格 / Compare prices across three room types
+
+```{r}
+# 中文：aes(price,room_type)将数值价格放x、类别放y，geom_boxplot()产生横向分组箱线图；theme_minimal()改变外观。
+# EN: aes(price,room_type) maps numeric price to x and category to y; geom_boxplot() makes horizontal grouped boxplots and theme_minimal() changes styling.
+# 中文：箱体跨Q1–Q3，线为中位数，须外点为潜在离群值；箱体的水平长度反映IQR而非样本量。
+# EN: Boxes span Q1–Q3 and the inner line is the median; points outside whiskers are potential outliers. Horizontal box length reflects IQR, not sample size.
+# 中文：本课恢复Shared room类别，以三组作比较。labs中的美元符号仅是原标签，实际单位应核对数据说明。
+# EN: This lesson restores the Shared room category for a three-group comparison. The dollar sign in labs is only the original label; verify units from the data documentation.
+
+  listings %>% 
+  ggplot(aes(price, room_type)) +
+  geom_boxplot() +
+  labs(title = "Arbinb listings: Price by Room Type",
+       x = "Price ($)",
+       y = "Type of Room",
+       caption = "Source: InsideAirbnb.com") +
+  theme_minimal()
+```
+
+
+## 3. 三组价格描述统计 / Descriptive prices by group
+
+```{r}
+# 中文：group_by(room_type)分组；summarise()每组生成一行最小值、最大值、均值与样本标准差。
+# EN: group_by(room_type) groups the records; summarise() returns one row per group with minimum, maximum, mean and sample SD.
+# 中文：min_price和sd_price是显式命名列，其余列采用表达式名称max(price)、mean(price)。
+# EN: min_price and sd_price are explicit names; the remaining output columns use expression names max(price) and mean(price).
+# 中文：未设置na.rm，要求price缺失已事先清理；标准差大不自动等于数据无效，偏态价格也不保证68%落在均值±SD内。
+# EN: No na.rm is specified, so price missingness should already be handled. A large SD is not automatically invalid, and skewed prices need not put 68% within mean ±SD.
+# 中文：统计量用于描述当前样本，ANOVA接着检验总体组均值差异；不能将组标准差与均值标准误混淆。
+# EN: These statistics describe the current sample; the next ANOVA tests population group means. Do not confuse group SD with the standard error of a mean.
+
+listings %>%
+  group_by(room_type) %>%
+  summarise(min_price = min(price), max(price), mean(price), sd_price = sd(price)) 
+```
+
+
+## 4. 单因素方差分析 / One-way ANOVA
+
+```{r}
+# 中文：aov(price~room_type,data=listings)拟合以房间类型为单一解释因子的价格模型；summary()给出ANOVA表。
+# EN: aov(price~room_type,data=listings) fits a price model with room type as its single factor; summary() produces the ANOVA table.
+# 中文：H0是三组总体均值全相等；H1是至少一组均值不同，并不要求每两组都不同。
+# EN: H0 says all three population means are equal; H1 says at least one differs, not that every pair differs.
+# 中文：关注Df、组间/组内平方和与均方、F value及Pr(>F)；小p值支持拒绝等均值H0，但不指出哪两组不同。
+# EN: Inspect Df, between/within sums and mean squares, F value and Pr(>F). A small p supports rejecting equal means without identifying which pairs differ.
+# 中文：经典F检验假定独立观测、组内误差近似正态且方差相等；严重异方差或异常值需要诊断，拒绝H0不证明因果。
+# EN: The classical F test assumes independent observations, approximately normal within-group errors and equal variances. Diagnose severe heteroscedasticity/outliers; rejection does not establish causality.
+
+# We could do this either using the aov() function or the lm() function.
+aov(price ~ room_type, data = listings) %>% 
+  summary()
+```
+
+
+## 5. ANOVA的管道写法 / Pipeline form of ANOVA
+
+```{r}
+# 中文：%>%把listings传入右侧函数，data=.中的点号明确指定传入的数据，而公式仍是price~room_type。
+# EN: %>% passes listings into the next call; the dot in data=. explicitly denotes that data while the formula remains price~room_type.
+# 中文：此块与上一块使用同样模型和样本，应得到同样ANOVA表；summary()显示结果但未给模型对象命名。
+# EN: This uses the same model and sample as the previous block and should produce the same ANOVA table; summary() prints results without storing a named model.
+# 中文：这一写法依赖magrittr风格%>%及其点号规则，不能只把管道换为|>并照搬data=.。
+# EN: This syntax relies on magrittr-style %>% and its dot placeholder; replacing only the pipe with |> while retaining data=. is not equivalent.
+
+# or 
+listings %>%
+  aov(price ~ room_type, data = .) %>%
+  summary()  
+```
+
+
+## 6. Pearson相关检验 / Pearson correlation test
+
+```{r}
+# 中文：cor.test(~price+review_scores_rating,data=listings)的双变量公式没有因变量；默认检验Pearson线性相关。
+# EN: The two-variable formula in cor.test(~price+review_scores_rating,data=listings) has no response; it tests Pearson linear correlation by default.
+# 中文：输出cor为相关系数r，范围−1至1；符号表示方向，绝对值表示线性相关强弱，不是因果效应。
+# EN: The output cor is r in [−1,1]; the sign gives direction and magnitude gives linear association strength, not a causal effect.
+# 中文：H0为总体相关系数ρ=0，默认双侧H1为ρ≠0；输出还含t、自由度、p值和相关系数95%置信区间。
+# EN: H0 is population correlation ρ=0 and the default two-sided H1 is ρ≠0; output also gives t, degrees of freedom, p and a 95% CI for the correlation.
+# 中文：公式方法使用两变量的完整观测对；评分缺失会缩小样本。Pearson对异常值敏感，其经典推断依赖独立观测及适当分布假设。
+# EN: The formula method uses complete pairs, so missing ratings reduce the sample. Pearson is sensitive to outliers; classical inference relies on independent observations and suitable distribution assumptions.
+# 中文：大样本中非常弱的r也可能有很小p；应分别报告效应大小与显著性，不把不拒绝ρ=0解释为所有形式均无关系。
+# EN: A very weak r can have a tiny p in a large sample. Report magnitude and significance separately; failing to reject ρ=0 does not rule out every form of association.
+
+# # Pearson's product-moment correlation
+cor.test(~ price + review_scores_rating, data = listings) 
+```
+
+
+## 7. 相关检验的管道写法 / Pipeline form of the correlation test
+
+```{r}
+# 中文：data=.指向%>%传入的listings，与上一块直接指定data=listings的作用相同；两者应有相同完整观测对和结果。
+# EN: data=. refers to listings passed through %>%, matching data=listings in the previous block; both should use the same complete pairs and yield the same results.
+# 中文：解释时先看r方向与大小，再看置信区间和p；教程示例r约−0.079，只是很弱负线性相关，实际数值以当前输出为准。
+# EN: Interpret r's sign and magnitude before its confidence interval and p. The tutorial's r near −0.079 is a very weak negative linear association; use current output for actual values.
+# 中文：p很小不证明评分导致价格变化；预期或质量等解释只是待验证假说，爱丁堡样本不能自动代表更广地区。
+# EN: A tiny p does not prove that ratings change prices. Explanations involving expectations or quality remain hypotheses; Edinburgh data do not automatically represent wider regions.
+
+# Or alternative 'tidyverse' way
+listings %>%
+  cor.test(~ price + review_scores_rating, data = .) 
+```
+

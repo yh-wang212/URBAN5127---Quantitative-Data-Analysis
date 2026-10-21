@@ -1,0 +1,72 @@
+---
+title: "Lab_1"
+author: "Plamena Panayotova"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(scales)
+
+
+```
+
+
+
+
+```{r}
+
+# Read in the dataset:
+
+listings  <- read_csv("listings_edinburgh.csv")
+
+# Look at your dataset (run the below code straight into the console): 
+
+
+glimpse(listings)
+
+
+# Change room_type from character to factor
+
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                               property_type = factor(property_type))
+      
+# Check levels:
+
+levels(listings$room_type)
+
+# Check frequencies:
+
+table(listings$room_type)
+
+# Create a better looking table (this uses the scales package loaded above; you might have to install this first):
+
+listings |>
+  count(room_type) |>  
+  mutate(
+    Percent = percent(n / sum(n), accuracy = 0.1)
+  ) |>
+  arrange(Percent)
+
+
+# You can try creating a new smaller dataset; note how the mutate and select operations are chained via a pipe operator (|>):
+
+listings_2 <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+
+listings_2 <- listings |> mutate(room_type = factor(room_type),
+                   property_type = factor(property_type)) |>
+  select(room_type, property_type) 
+
+# The above was only an exercise to show you how to create a subset, so we can delete the new smaller dataset now:
+
+remove(listings_2)
+
+```
+

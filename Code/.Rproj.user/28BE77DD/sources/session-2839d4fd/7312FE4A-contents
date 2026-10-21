@@ -1,0 +1,57 @@
+---
+title: "Lab_6_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+  listings %>% 
+  ggplot(aes(price, room_type)) +
+  geom_boxplot() +
+  labs(title = "Arbinb listings: Price by Room Type",
+       x = "Price ($)",
+       y = "Type of Room",
+       caption = "Source: InsideAirbnb.com") +
+  theme_minimal()
+```
+
+
+```{r}
+listings %>%
+  group_by(room_type) %>%
+  summarise(min_price = min(price), max(price), mean(price), sd_price = sd(price)) 
+```
+
+
+```{r}
+# We could do this either using the aov() function or the lm() function.
+aov(price ~ room_type, data = listings) %>% 
+  summary()
+```
+
+
+```{r}
+# or 
+listings %>%
+  aov(price ~ room_type, data = .) %>%
+  summary()  
+```
+
+
+```{r}
+# # Pearson's product-moment correlation
+cor.test(~ price + review_scores_rating, data = listings) 
+```
+
+
+```{r}
+# Or alternative 'tidyverse' way
+listings %>%
+  cor.test(~ price + review_scores_rating, data = .) 
+```
+

@@ -1,0 +1,181 @@
+---
+title: "Lab_8_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(texreg) # for comparing models
+
+# Read in data
+listings <- read_csv("listings_edinburgh.csv") # remember your file name and path may be different
+```
+
+
+```{r}
+# Filtering
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms)
+
+# Coercing 
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+
+
+```{r}
+# Model 4:
+m4 <- listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .) 
+```
+
+
+```{r}
+# Diagnostics 1: Influential Outliers
+
+# 1. checking for outliers: model 4
+listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .)  %>%
+  plot(which = 5)
+```
+
+
+```{r}
+# or, alternatively, we could simply pipe the created object to the plot() function
+# this is what I'll use from now on
+m4 %>% plot(which = 5) # model 4
+```
+
+
+```{r}
+# two arguments: my dataset, what I want the new column to be called
+listings_rows <- rownames_to_column(listings, "row_numbers") # eases checking influential outliers
+```
+
+
+```{r}
+# filter out the two boats
+listings_rows  <-  listings_rows %>% 
+  filter(row_numbers!= "8" & row_numbers!= "8651")
+
+# rerun model 4 now and save it to a new object
+m4_drop <- listings_rows %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .)  
+```
+
+
+```{r}
+m4 %>% summary()
+```
+
+
+```{r}
+m4_drop %>% summary()
+```
+
+
+```{r}
+# model 4: residuals vs fitted values plot
+m4 %>% plot(which = 1)
+```
+
+
+```{r}
+listings %>% 
+  ggplot(aes(x = review_scores_rating, y = price)) +
+  geom_point() +
+  geom_smooth()
+```
+
+
+```{r}
+# install.packages("car")
+library(car)
+```
+
+
+```{r}
+crPlots(m4)
+```
+
+
+```{r}
+# install.packages ("lmtest")
+library(lmtest)
+```
+
+
+```{r}
+resettest(m4, power = 2:3, type = "fitted")
+```
+
+
+```{r}
+# model 4: Q-Q plot
+listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating,
+     data = .) %>%
+  plot(which = 2) # gives us the Q-Q plot
+
+# or
+m4 %>% plot(which = 2)
+```
+
+
+```{r}
+# 1. Residuals vs fitted plot
+m4 %>% plot(which = 1)
+```
+
+
+```{r}
+library(lmtest) 
+
+# make sure this is loaded in the very first chunk: the setup chunk at the very beginning of the document. I am doing it here only to draw your attention to the fact we need to use it i.e. install it and then load the library.
+```
+
+
+```{r}
+listings_rows %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .) %>%
+  bptest() # runs the Breusch-Pagan test
+```
+
+
+```{r}
+# or 
+m4 %>% bptest()
+```
+
+
+```{r}
+cor.test(listings$bedrooms, listings$accommodates)
+```
+
+
+```{r}
+listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .) %>%
+  vif()
+```
+
+
+```{r}
+# or simply
+
+m4 %>% 
+  vif()
+```
+

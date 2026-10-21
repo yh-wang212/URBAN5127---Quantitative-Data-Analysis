@@ -1,0 +1,325 @@
+---
+title: "Lab_3_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 3：数值变量的可视化 / Visualising numerical variables
+
+中文：本文件对应 Tutorial 3，使用 ggplot2 的图层语法绘制直方图、密度图、条形图和分组箱线图。注释解释每个代码块的作用，也明确指出原练习中用于比较的不合适图形、未处理的缺失值，以及标签与实际统计量不一致的位置。为保留原练习，全部可执行语句保持原样。
+
+English: This file follows Tutorial 3 and uses ggplot2 layers to create histograms, density plots, bar charts, and grouped boxplots. The notes explain each chunk and identify the intentionally unsuitable comparison plot, missing-data behaviour, and labels that do not match the plotted statistic. All executable exercise statements are retained.
+
+中文：运行前安装 `tidyverse`，将 CSV 放在工作目录中，通常是本 Rmd 所在的 `Code` 文件夹。按顺序执行可重建之前的数据清理。RStudio 中交互执行代码块可能使用现有 Environment，而 Knit 通常在新的渲染会话中执行整个文档，所以不要依赖未写入文件的对象或操作。
+
+English: Install `tidyverse` first and place the CSV in the working directory, normally this Rmd's `Code` folder. Run chunks in order to recreate the earlier cleaning. Interactive chunks can use the current RStudio Environment, whereas Knit normally renders the complete document in a fresh session; do not rely on objects or steps that are absent from the file.
+
+中文：图中价格标签沿用原文 `$`，但实际货币必须由数据说明确认；标签不会换算货币。图示和说明应以当前数据输出为依据，而不是把教材截图的数字当成固定结论。
+
+English: Original `$` price labels are retained, but confirm the currency from the data documentation; labels do not convert units. Interpret the current output rather than treating values in workbook screenshots as fixed results.
+
+## 0. 文档设置与数据准备 / Document setup and data preparation
+
+```{r setup, include=FALSE}
+# 中文：include=FALSE 隐藏本块的代码和结果但仍执行；echo=TRUE 让后续块显示分析源代码。
+# English: include=FALSE executes this chunk while hiding its code and results; echo=TRUE displays source code in later chunks.
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# 中文：加载 tidyverse（含 ggplot2、readr、dplyr 等），再把 CSV 读取并赋值给 listings。
+# English: Load tidyverse, including ggplot2, readr, and dplyr, then import the CSV and assign it to listings.
+# 中文：相对路径基于当前工作目录；重新执行读取会覆盖 listings 中之前的清理或转换结果。
+# English: The relative path is resolved against the working directory; reimporting overwrites any earlier changes to listings.
+# 1. Load in our libraries (here just the tidyverse)
+library(tidyverse)
+
+# 2.  Read in our data (as we did in Lab Tutorial 1)
+listings <- read_csv("listings_edinburgh.csv")
+```
+
+
+```{r}
+# 中文：factor() 把两种类别列转换为因子；mutate() 保留其他列，赋值使转换结果保存到 listings。
+# English: factor() converts the two categorical columns; mutate() keeps other columns and assignment stores the result in listings.
+# 中文：filter() 的三个条件同时满足才保留：25 <= price <= 1000，bathrooms <= 5，边界值均包含。
+# English: filter() requires all three conditions: 25 <= price <= 1000 and bathrooms <= 5, including all boundaries.
+# 中文：drop_na() 删除指定三列任一缺失的房源，但 review_scores_rating 的 NA 可能仍然存在。
+# English: drop_na() removes listings missing any of the three specified columns, but review_scores_rating can still contain NA.
+# 中文：这些阈值是教程的样本定义，不证明被排除记录全是错误，也不保证其他变量没有异常值。
+# English: These thresholds define the exercise sample; they neither establish that every excluded record is wrong nor guarantee other variables are free of unusual values.
+# Note: # remember to check your file path is the same as mine above.
+
+# 3. changes from Tutorials 1-2:
+
+# Tutorial 1: coerce room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type)) # one line of code now
+
+
+# Tutorial 2: filter out any extreme or questionable values
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+```
+
+
+```{r}
+# 中文：检查转换后的 <fct> 类型和筛选后的维度；房源数可随数据版本而变，不应硬编码为教材结果。
+# English: Check the converted <fct> types and filtered dimensions; listing counts depend on the data version and should not be assumed from the workbook.
+# 中文：glimpse() 是诊断输出，不改变数据，也不能替代对数值范围与缺失情况的检查。
+# English: glimpse() is diagnostic output; it does not modify data or replace checking value ranges and missingness.
+glimpse(listings) # check our variable data types
+```
+
+## 1. 直方图与 ggplot 图层 / Histograms and ggplot layers
+
+中文：`%>%` 把数据传递给下一函数；ggplot 中的 `+` 则把图层加到图形上，两者用途不同。`aes()` 将变量映射到坐标、颜色等图形属性；`geom_*()` 指定图形形式；`labs()` 添加易读标签。
+
+English: `%>%` passes data to the next function, whereas `+` adds layers to a ggplot. `aes()` maps variables to graphical properties such as axes or colours; `geom_*()` specifies the mark type; `labs()` adds readable labels.
+
+```{r}
+# 中文：aes(price) 将 price 映射到 x 轴；geom_histogram() 将连续数值分箱，并在 y 轴显示每箱房源数。
+# English: aes(price) maps price to x; geom_histogram() bins the numeric values and displays listing counts on y.
+# 中文：未指定 bins 或 binwidth 时采用默认分箱；控制台关于 bins 的提示通常是建议，不是执行失败。
+# English: Without bins or binwidth, default binning is used; the bins message is usually advice rather than an execution failure.
+# 中文：标题、副标题、轴标签和数据来源由 labs() 设置；副标题只是说明，真正的筛选已在前面完成。
+# English: labs() sets title, subtitle, axes, and source; the subtitle is descriptive and the actual filtering was performed earlier.
+# 中文：观察形状、集中位置和高价尾部；直方图的形状也受箱宽影响，不应只凭默认分箱下结论。
+# English: Inspect shape, centre, and the high-price tail; appearance also depends on bin width, so avoid relying on default bins alone.
+listings %>%
+  ggplot(aes(price)) +
+  geom_histogram() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+
+```{r}
+# 中文：只建立数据与映射层，没有添加 geom，因此会得到有坐标背景但没有数据标记的图。
+# English: This creates only data and mapping layers; with no geom, the result has axes/background but no data marks.
+# 中文：这是拆解图形构建过程的教学步骤，并不表示数据为空或读取失败。
+# English: This is a teaching step that isolates plot construction, not evidence that the dataset is empty or the import failed.
+# Layer 1 
+
+listings %>%
+  ggplot(aes(price)) 
+```
+
+
+```{r}
+# 中文：把 listings 直接放在 ggplot() 第一个参数，与上一块通过 %>% 传入数据的效果相同。
+# English: Supplying listings as ggplot()'s first argument is equivalent to passing it through %>% in the previous chunk.
+# 中文：aes(price) 仍只指定 x 轴映射；没有 geom，所以仍不会绘制直方图柱形。
+# English: aes(price) still specifies only the x mapping; without a geom, no histogram bars are drawn.
+ggplot(listings, aes(price))
+```
+
+
+```{r}
+# 中文：在初始 ggplot 对象后用 + 加上 geom_histogram()，才开始显示按价格分箱后的计数。
+# English: Adding geom_histogram() with + draws counts within price bins on the initial ggplot object.
+# 中文：当前图使用默认标签；下一块再添加 labs()，演示样式说明与统计图层可以逐层构建。
+# English: This plot uses default labels; the following chunk adds labs() to demonstrate separate statistical and labelling layers.
+# Layer 1 + Layer 2
+
+listings %>%
+  ggplot(aes(price)) + # adding another layer using the '+' symbol
+  geom_histogram() # Layer 2 will add the type of plot we want
+```
+
+
+```{r}
+# 中文：组合数据/映射层、直方图层和标签层，得到与本节第一张完整价格图相同的构建结构。
+# English: Combine data/mapping, histogram, and label layers, matching the construction of the first complete price plot.
+# 中文：title 是主标题，subtitle 是补充说明，x/y 是坐标轴名称，caption 是图下的来源说明。
+# English: title is the main heading, subtitle adds context, x/y label axes, and caption gives the source below the figure.
+# 中文：标签应与实际数据和统计量一致；添加文字不会改变分箱、过滤条件或数值单位。
+# English: Labels should match the data and statistic; adding text does not change binning, filtering, or units.
+# Layer 1 + Layer 2 + Layer 3
+
+listings %>%
+  ggplot(aes(price)) + # adding the values we want to plot
+  geom_histogram() + # adding the type of plot we want
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+
+```{r}
+# 中文：将 x 变量换为 bathrooms，其他图层结构不变；y 仍为分箱计数，不是平均浴室数。
+# English: Change x to bathrooms while keeping the layer structure; y remains bin counts rather than average bathrooms.
+# 中文：bathrooms 可能包含半间等离散数值，默认连续分箱可能产生空隙；解释图形时需结合实际取值和箱宽。
+# English: bathrooms can contain discrete values including half units; default continuous bins may leave gaps, so consider the observed values and bin width.
+# 中文：本数据已筛选 bathrooms <= 5；这张图只描述筛选后样本，不表示所有原始房源的浴室分布。
+# English: bathrooms was filtered to <= 5; this plot describes the filtered sample, not all original listings.
+listings %>%
+  ggplot(aes(bathrooms)) + # adding the values we want to plot
+  geom_histogram() + # adding the type of plot we want
+  labs(title = "Distribution of bathrooms of Airbnb listings in Edinburgh",
+       x = "Number of bathrooms",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 2. 按房间类型比较价格密度 / Comparing price densities by room type
+
+中文：密度曲线是分布形状的平滑估计。默认每个组的曲线面积各自约为 1，因此曲线高度不能直接表示哪个组有更多房源，也不是价格均值。比较组内分布形状时，应同时注意样本量差异。
+
+English: A density curve is a smoothed estimate of distribution shape. By default each group's area is approximately one, so curve height does not directly show which group has more listings or its mean price. Consider group sizes alongside their distribution shapes.
+
+```{r}
+# 中文：fill = room_type 放在 aes() 内，将组别映射为不同填充颜色，并为每种房间类型分别估计密度。
+# English: fill = room_type inside aes() maps categories to fill colours and estimates a separate density for each room type.
+# 中文：alpha = 0.5 设置半透明，使重叠的曲线仍可辨认；fill = "Room type" 在 labs() 中只修改图例标题。
+# English: alpha = 0.5 makes fills translucent to show overlap; fill = "Room type" in labs() changes only the legend title.
+# 中文：原代码把 y 标成 Count，但 geom_density() 默认输出 Density（概率密度），不是计数；保留原码并在此注明。
+# English: The original y label says Count, but geom_density() defaults to probability density, not counts; the code is retained and the mismatch is noted here.
+# 中文：不同组曲线的峰、位置和尾部帮助比较价格分布；核密度在边界外延伸也不意味着实际存在这些价格。
+# English: Peaks, locations, and tails compare price distributions; smoothing beyond observed boundaries does not imply listings exist at those prices.
+listings %>%
+  ggplot(aes(price, fill = room_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+## 3. 评分分布与合适的图形 / Review distributions and appropriate plots
+
+```{r}
+# 中文：只在本管道排除评分缺失的房源；没有赋值，所以 listings 中原本的评分 NA 仍保留。
+# English: Remove missing ratings for this pipeline only; without assignment, the original rating NA remain in listings.
+# 中文：直方图 y 轴是每箱计数；expand_limits(x = 0) 使显示范围包含 0，但不会新增 0 分房源或把缺失变成 0。
+# English: Histogram y shows bin counts; expand_limits(x = 0) includes zero in the display without creating zero-rated listings or replacing missing values.
+# 中文：扩展坐标范围并非强制 x 上限为 100；评分量表是否为 0-100 仍需核对数据说明。
+# English: Expanding the axis does not enforce an upper limit of 100; confirm the rating scale from the data documentation.
+# A histogram of review_scores_rating 
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(review_scores_rating)) +
+  geom_histogram() +
+  expand_limits(x = 0) + # otherwise won't start at zero
+  labs(title = "Distribution of average review score of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+
+```{r}
+# 中文：这是教材用于说明“不合适的图形”的对照：room_type 只有类别，没有用于计算四分位数的数值分布。
+# English: This is the workbook's unsuitable-plot comparison: room_type contains categories, without a numeric distribution for meaningful quartiles.
+# 中文：仅把分类变量映射到单轴再调用 geom_boxplot() 不构成有解释意义的分组箱线图；可能出现无意义图形或警告。
+# English: Mapping only a category to one axis does not make an interpretable grouped boxplot and may yield meaningless output or warnings.
+# 中文：想展示类别频数应看下一块 geom_bar()；想做分组箱线图则需要同时映射一个数值变量。
+# English: Use the next geom_bar() chunk for category frequencies; a grouped boxplot needs a numeric variable as well as a category.
+# boxplot of room_type
+listings %>% 
+  ggplot(aes(room_type)) +
+  geom_boxplot()
+```
+
+
+```{r}
+# 中文：geom_bar() 默认使用 stat_count，自动统计每个 room_type 的房源数；无需手动提供 y 值。
+# English: geom_bar() uses stat_count by default and counts listings per room_type without a manually supplied y value.
+# 中文：条形图适合比较离散类别的频数；直方图则针对数值区间分箱，两者统计含义不同。
+# English: A bar chart compares discrete category frequencies, whereas a histogram bins numerical intervals; they represent different summaries.
+# bar plot of room_type
+listings %>% 
+  ggplot(aes(room_type)) +
+  geom_bar()
+```
+
+
+```{r}
+# 中文：在评分数值轴上按 room_type 分组绘制密度，半透明颜色用于比较各组的分布位置与形状。
+# English: Plot rating densities separately by room_type, using translucent fills to compare distribution locations and shapes.
+# 中文：本块没有 drop_na(review_scores_rating)，因此评分缺失时 geom_density() 会删除相应值并可能发出警告。
+# English: There is no drop_na(review_scores_rating) here, so geom_density() excludes missing ratings and may issue a warning.
+# 中文：警告不是把 NA 变成 0；核对排除数及分组缺失情况，避免把剩余样本当作全部房源。
+# English: The warning does not mean NA became zero; check exclusions and missingness by group before generalising to all listings.
+# 中文：这里原 y 标签 Count 同样不准确；实际默认 y 是每组归一化的概率密度，不能用曲线高度比较组总数。
+# English: Count is again an inaccurate y label; the default is a normalised density for each group, so heights do not compare group totals.
+# Density plot of reviews by room types:
+
+listings %>%
+  ggplot(aes(review_scores_rating, fill = room_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of review ratings of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+
+```{r}
+# 中文：先排除评分 NA，再将评分映射到 x、房间类型映射到 y，得到每种房间类型一幅横向箱线图。
+# English: Remove missing ratings, map rating to x and room type to y, producing one horizontal boxplot per room category.
+# 中文：箱体覆盖第 1 至第 3 四分位数，中线是中位数；默认须延伸到不超过 1.5 倍四分位距范围的最远观测。
+# English: The box spans the first to third quartiles and the line marks the median; default whiskers reach the most extreme observations within 1.5 IQR.
+# 中文：须外点是按此规则标记的潜在异常观测，不自动等于录入错误；箱须也不总是最小值与最大值。
+# English: Points beyond the whiskers are potential outliers under that rule, not automatic data errors; whiskers are not always the minimum and maximum.
+# 中文：labs(fill = ...) 在没有 fill 映射时通常不会产生颜色图例；此处关键是 x/y 的数值-类别映射。
+# English: labs(fill = ...) normally does not create a fill legend when no fill aesthetic is mapped; the important mapping is numeric x and categorical y.
+# Boxplot of reviews by room types:
+
+listings %>%
+  drop_na(review_scores_rating) %>% 
+  ggplot(aes(x = review_scores_rating, y = room_type)) +
+  geom_boxplot() +
+  labs(title = "Distribution of review ratings of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Type of Room",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+
+```{r}
+# 中文：把分组变量换成 property_type，为各物业类别分别估计评分密度；通常比 room_type 有更多类别。
+# English: Replace the grouping variable with property_type to estimate a rating density for each property category, usually many more groups than room_type.
+# 中文：drop_na() 排除评分缺失，但不能解决组内有效观测太少的问题；密度估计通常至少需要两个观测。
+# English: drop_na() removes missing ratings but cannot fix very small groups; density estimation normally requires at least two observations.
+# 中文：若提示少于两个观测的组被丢弃，应检查组样本量；过多颜色和重叠也会影响可读性。
+# English: If groups with fewer than two observations are dropped, inspect their sample sizes; many colours and overlaps also reduce readability.
+# 中文：本块原标签 Count 仍应理解为 Density；将来的类别合并必须有实质理由，不能只为了使图更好看。
+# English: Interpret the original Count label as Density here as well; any later category collapsing should have substantive justification, not only improve appearance.
+# Density plot of reviews by property types:
+
+listings %>%
+  drop_na(review_scores_rating) %>% 
+  ggplot(aes(review_scores_rating, fill = property_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of review ratings of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Property type")
+```
+
+
+```{r}
+# 中文：levels() 返回因子的所有已登记水平名称，而不是每组样本数；返回顺序也决定默认绘图或模型中的类别顺序。
+# English: levels() returns all registered factor level names, not group counts; their order also affects default plotting and modelling order.
+# 中文：先创建因子再 filter() 后，某些空类别的水平可能仍保留，所以 levels() 长度不一定等于当前有观测的组数。
+# English: Filtering after factor creation can retain unused levels, so the length of levels() need not equal the number of groups with current observations.
+# 中文：了解类别数量有助于判断图是否过于拥挤；若需判断稀疏程度，还需另查每组非缺失评分数。
+# English: Category counts help assess visual clutter; assessing sparse groups also requires counts of nonmissing ratings within each group.
+# have a quick check of how many levels we have:
+levels(listings$property_type)
+```

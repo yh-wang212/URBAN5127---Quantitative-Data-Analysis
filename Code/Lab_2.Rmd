@@ -1,0 +1,176 @@
+---
+title: "Lab_2_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Step 1: Load the tidyverse package(need to do this EACH time you open up R Studio)
+library(tidyverse)
+
+# Step 2: Read in our data: we've loaded the tidyverse, so we can use the read_csv function from the tidyverse now...
+listings <- read_csv("listings_edinburgh.csv")
+
+# Step 3: After inspeting our data, we had to coerce or change some of our variables using the mutate() function:
+listings <- mutate(listings, room_type = factor(room_type))
+listings <- mutate(listings, property_type = factor(property_type))
+```
+
+
+```{r}
+glimpse(listings)
+```
+
+
+```{r}
+summarise(listings, min(price), max(price), mean(price), median(price))
+```
+
+
+```{r}
+# 1. Price 
+
+listings %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+# 2. Bedrooms
+listings %>%
+  summarise(min(bedrooms), median(bedrooms), mean(bedrooms), max(bedrooms))
+```
+
+
+```{r}
+# 3. Bathrooms
+listings %>%
+  summarise(min(bathrooms), median(bathrooms), mean(bathrooms), max(bathrooms))
+```
+
+
+```{r}
+# Let's drop the missing values using drop_na()
+
+# 1. Price 
+
+listings %>% 
+  drop_na(price) %>% 
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+# 2. Bedrooms
+listings %>%
+  drop_na(bedrooms) %>% 
+  summarise(min(bedrooms), median(bedrooms), mean(bedrooms), max(bedrooms))
+```
+
+
+```{r}
+# 3. Bathrooms
+listings %>%
+  drop_na(bathrooms) %>% 
+  summarise(min(bathrooms), median(bathrooms), mean(bathrooms), max(bathrooms))
+```
+
+
+```{r}
+listings %>%
+  select(price,bedrooms,bathrooms) %>%
+  drop_na() %>%
+  pivot_longer(1:3, names_to = "variable") %>%
+  group_by(variable) %>%
+  summarise(min(value), median(value), mean(value), max(value))
+```
+
+
+```{r}
+# lowest to highest
+arrange(listings, price) 
+```
+
+
+```{r}
+# highest to lowest
+arrange(listings, desc(price)) 
+```
+
+
+```{r}
+# these will be the cheapest
+listings %>%
+  arrange(price) %>%
+  head(10)
+```
+
+
+```{r}
+# look at the last twenty properties
+# these will be the most expensive
+listings %>%
+  arrange(price) %>%
+  tail(20)
+```
+
+
+```{r}
+# We'll sort bathrooms from low to high again, and look at the first twenty observations:
+
+listings %>% arrange(bathrooms) %>% 
+  head(20)
+```
+
+
+```{r}
+# let's look at the higher end - those properties with the most bathrooms:
+
+listings %>% arrange(bathrooms) %>% 
+  tail(20)
+```
+
+
+```{r}
+# so let's keep (a) prices greater than or equal to £25 (b) prices £1,000 or under (c) five bathrooms or under 
+
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+```
+
+
+```{r}
+listings %>%
+  count(room_type) %>%
+  mutate(percent = (n / sum(n)*100) %>% round(2))
+```
+
+
+```{r}
+# simple summary of price (see Section 1 above)
+listings %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+# We can now see if price varies by property type:
+
+listings %>%
+  group_by(property_type) %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+#  Make a table showing the summary statistics for price broken down by room_type.
+
+listings %>%
+  group_by(room_type) %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```

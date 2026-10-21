@@ -1,0 +1,169 @@
+---
+title: "Lab_9_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+###########################
+# 1. Load all our libraries.
+###########################
+# load tidyverse
+library(tidyverse)
+
+# load the car package in order to access the vif() function
+library(car)
+
+# load the lmtest package in order to access the Breusch-Pagan and Ramsay RESET tests
+library(lmtest)
+
+
+###############################
+# 2. Read in the listings data.
+###############################
+listings <- read_csv("listings_edinburgh.csv")
+```
+
+
+```{r}
+###############################
+# 3. And we'll recreate the previous changes made to the listings data.
+###############################
+
+# Filtering
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms)
+
+# Coercing 
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+
+
+```{r}
+m4 <- listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .) 
+```
+
+
+```{r}
+# transform the dependent variable in Model 4, saving it to a new object (m4_log)
+
+m4_log <- listings %>%
+  mutate(log_price = log(price)) %>%
+  lm(log_price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .)
+```
+
+
+```{r}
+# compare the two models
+
+m4_log %>% summary()
+```
+
+
+```{r}
+m4 %>% summary()
+```
+
+
+```{r}
+# Check the model behaves better 
+
+# influential outliers
+# 1. residuals vs leverage
+m4_log %>% plot(which = 5) # still got same issues as we didn't remove the influential points
+```
+
+
+```{r}
+m4 %>% plot(which = 5)
+```
+
+
+```{r}
+# non-linearity: what we are correcting for primarily.
+# 2a. residuals vs fitted
+m4_log %>% plot(which = 1) # looks a little better - less curved
+```
+
+
+```{r}
+m4 %>% plot(which = 1)
+```
+
+
+```{r}
+# 2b. Ramsay RESET test
+resettest(m4_log, power = 2:3, type = "fitted") # we can accept the null now as over 0.05
+```
+
+
+```{r}
+resettest(m4, power = 2:3, type = "fitted")
+```
+
+
+```{r}
+# 3. Normality of residuals
+m4_log %>% plot(which = 2) # looks better
+```
+
+```{r}
+m4 %>% plot(which = 2)
+```
+
+
+```{r}
+# Heteroscedasticity
+# 4a. residuals vs fitted
+m4_log %>% plot(which = 1) # looks better
+```
+
+
+```{r}
+m4 %>% plot(which = 1) # compare
+```
+
+
+```{r}
+# 4b. Breusch-Pagan test
+m4_log %>% bptest() # still got issues
+```
+
+
+```{r}
+# drop review scores
+
+m5 <- listings %>%
+  mutate(log_price = log(price)) %>%
+  lm(log_price ~ room_type + property_type + bathrooms + bedrooms + accommodates,
+     data = .)
+```
+
+
+```{r}
+# install.packages("sandwich") - do this in the console ***
+library("sandwich") # you would normally load this in your intial setup chunk
+```
+
+
+```{r}
+# simple White's standard errors: save it as m7_SE so we know
+m5_SE <- coeftest(m5, vcov = vcovHC(m5, type = "HC0"))
+m5_SE # print out the result
+```
+
+
+```{r}
+m5 %>% summary() # compare both models
+```

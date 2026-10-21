@@ -1,0 +1,301 @@
+---
+title: "Lab_9_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 9：回归诊断 II、对数模型与稳健标准误 / Diagnostics II, log models and robust SEs
+
+中文：参考 Tutorial 9，本文件先重建原价格模型，再对价格取自然对数、重新检查诊断、去掉评分，并计算异方差稳健标准误。所有原有可执行语句和代码块顺序保留；原注释中的示例结果不能当作每次运行必然得到的结论。
+
+English: Following Tutorial 9, this file rebuilds the price model, logs price, repeats diagnostics, removes review score, and computes heteroscedasticity-robust SEs. Original executable statements and chunk order are retained; example conclusions are not guaranteed results for every run.
+
+中文运行前提：CSV 需能从实际工作目录找到；tidyverse、car、lmtest、sandwich 需安装。按顺序执行，后续对象依赖前面的模型。此处重新读取并使用原始物业类别，没有自动沿用 Lab 7 的类别合并或 Lab 8 的删行版本。
+
+English prerequisites: The CSV must be reachable from the actual working directory and tidyverse, car, lmtest and sandwich must be installed. Run in order because later chunks depend on earlier fitted objects. The file uses raw property categories and does not automatically inherit Lab 7's collapsed levels or Lab 8's exclusions.
+
+中文概念补充：外生性关注 `E(error | X) = 0`，不是要求解释变量与价格无关；观测独立性涉及不同房源误差之间是否相关，例如空间或同一房东的聚类。下面的 RESET、BP 和 HC0 不能单独检验或消除所有这些问题。
+
+English concepts: Exogeneity concerns `E(error | X) = 0`, not independence of predictors from price. Observation independence concerns dependence across listing errors, such as spatial or host clustering. RESET, BP and HC0 cannot by themselves test or resolve all of these issues.
+
+```{r setup, include=FALSE}
+# 中文：include=FALSE 隐藏本块但仍执行；echo=TRUE 使后续块在输出报告里显示 R 源代码。
+# English: include=FALSE hides this chunk but still executes it; echo=TRUE displays later chunks' R source.
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# 中文：tidyverse 负责导入/整理，car 提供 vif 等诊断，lmtest 提供 resettest、bptest 和 coeftest。
+# English: tidyverse supports import/wrangling; car provides diagnostics such as vif; lmtest provides resettest, bptest and coeftest.
+# 中文：library 只加载已安装包，不执行安装；read_csv 读取原始 CSV，<- 保存到 listings。
+# English: library loads installed packages without installing them; read_csv imports the raw CSV into listings.
+# 中文：虽然原文件加载了car，本文件后面没有再次调用vif；加载包本身不等于完成共线性检查。
+# English: car is loaded, but vif is not called later in this file; loading a package does not perform the diagnostic.
+###########################
+# 1. Load all our libraries.
+###########################
+# load tidyverse
+library(tidyverse)
+
+# load the car package in order to access the vif() function
+library(car)
+
+# load the lmtest package in order to access the Breusch-Pagan and Ramsay RESET tests
+library(lmtest)
+
+
+###############################
+# 2. Read in the listings data.
+###############################
+listings <- read_csv("listings_edinburgh.csv")
+```
+
+
+```{r}
+# 中文：重建清洗规则：只保留25至1000（含端点）的价格、浴室数≤5的房源，并排除指定三列缺失。
+# English: Retain prices 25 to 1000 inclusive, bathrooms<=5, and complete values in the three named columns.
+# 中文：筛选是多个条件的交集；评分缺失尚未删除，后续lm会按其公式进一步删缺失行。
+# English: Conditions are combined with AND; missing scores remain until lm applies complete-case handling for its formula.
+# 中文：factor 使 room_type/property_type 作为分类变量进入模型，而不是作为自由文本或人为连续编码。
+# English: factor represents room/property types categorically rather than as free text or arbitrary numeric codes.
+# 中文：价格清洗只决定数值范围，不确认货币单位；具体单位应查CSV的数据说明。
+# English: Price filtering sets a numeric range without establishing currency units; check the dataset documentation.
+###############################
+# 3. And we'll recreate the previous changes made to the listings data.
+###############################
+
+# Filtering
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms)
+
+# Coercing 
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+
+
+```{r}
+# 中文：建立原尺度 m4；price 是因变量，右侧是房型、物业、浴室、卧室、容量和评分的加性主效应。
+# English: Fit original-scale m4 with additive effects of types, rooms, capacity and review score.
+# 中文：data=. 指向 %>% 传入的 listings；默认含截距，因子系数相对参照水平解释。
+# English: data=. receives listings from %>%; the intercept is included and factor coefficients compare with reference levels.
+# 中文：保存 m4 便于后面与对数模型比较；新增m4_log不会自动修改此对象。
+# English: Save m4 as a baseline; creating m4_log does not alter this fitted object.
+m4 <- listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .) 
+```
+
+
+```{r}
+# 中文：log(price) 是自然对数ln，不是log10；前面price≥25保证有定义。非正价格会产生无穷/NaN等问题。
+# English: log(price) is the natural logarithm, not log10; price>=25 ensures positivity required for finite logs.
+# 中文：mutate 在管道中临时创建log_price，未赋回listings；m4_log保存的是用此临时数据拟合的模型。
+# English: mutate creates log_price in the piped data without assigning it back to listings; m4_log stores the resulting fit.
+# 中文：取对数改变因变量和误差结构，是新的建模假设，可能改善偏态/非线性，但不保证解决所有诊断问题。
+# English: Logging changes the response/error structure and model assumptions; it may help skewness/nonlinearity without guaranteeing all problems disappear.
+# transform the dependent variable in Model 4, saving it to a new object (m4_log)
+
+m4_log <- listings %>%
+  mutate(log_price = log(price)) %>%
+  lm(log_price ~ room_type + property_type + bathrooms + bedrooms + accommodates + review_scores_rating, 
+     data = .)
+```
+
+
+```{r}
+# 中文：对数模型摘要的系数单位是log-price；数值变量增加1单位与条件对数均值变化beta相关。
+# English: Coefficients are in log-price units; a one-unit numeric increase changes conditional mean log-price by beta.
+# 中文：对一单位变化/类别对比，100*(exp(beta)-1)%给出条件几何均价的比例差；小系数时100*beta%是近似。
+# English: For a one-unit change/category contrast, 100*(exp(beta)-1)% gives the conditional geometric-mean price difference; 100*beta% is a small-beta approximation.
+# 中文：不能不加条件把它说成算术平均价格的百分比变化；原尺度均价预测需考虑重转换偏差和误差分布。
+# English: Do not automatically equate this with a percent change in arithmetic mean price; retransformation needs error-distribution/smearing considerations.
+# compare the two models
+
+m4_log %>% summary()
+```
+
+
+```{r}
+# 中文：查看原尺度m4。此处系数是价格差，而上一块是log-price差，不能直接比较系数数值大小。
+# English: Inspect original-scale m4; coefficients are price differences rather than log-price differences and are not numerically interchangeable.
+# 中文：两模型的因变量不同，R²及残差标准误的尺度也不同；不能仅因log模型R²更高就认定更优。
+# English: The models have different responses, so R-squared and residual SE are on different scales; a larger log-model R-squared alone does not prove improvement.
+# 中文：应看诊断、理论合理性和相同目标尺度下的预测表现；若比较样本，先核对各模型实际使用的行。
+# English: Use diagnostics, substantive plausibility and prediction on a common target scale, checking actual fitted rows as well.
+m4 %>% summary()
+```
+
+
+```{r}
+# 中文：which=5 对log模型作残差-杠杆图，结合Cook距离识别可能影响系数的观测。
+# English: which=5 examines residuals versus leverage for the log model, with Cook-distance information about possible influence.
+# 中文：取对数没有删除记录，但改变了模型，残差和影响程度可能变化；需根据实际图核查，不能预设“同样的问题”。
+# English: Logging does not delete records but changes the model and potentially influence; judge the actual plot rather than assuming identical issues.
+# 中文：高杠杆和离群不相同；诊断标签应核对模型案例与原数据，不能当作永久房源ID。
+# English: High leverage differs from outlying response; reconcile case labels with source data rather than treating them as permanent listing IDs.
+# Check the model behaves better 
+
+# influential outliers
+# 1. residuals vs leverage
+m4_log %>% plot(which = 5) # still got same issues as we didn't remove the influential points
+```
+
+
+```{r}
+# 中文：绘制原m4的相同诊断，作为对照。比较有影响记录、极稀少因子类别和Cook距离，而非只看点数。
+# English: Draw the same diagnostic for original m4, comparing influential cases, sparse levels and Cook distance rather than point counts alone.
+# 中文：有效但罕见的房源应先调查和做敏感性分析，不能仅凭一条经验阈值删除。
+# English: Investigate valid rare listings and test sensitivity rather than deleting them solely by a heuristic cutoff.
+m4 %>% plot(which = 5)
+```
+
+
+```{r}
+# 中文：log模型的残差-拟合值图；平滑趋势接近0水平线时，条件均值形式较合理。
+# English: Inspect residuals versus fitted log-price; a near-horizontal smooth around zero supports the conditional mean form.
+# 中文：检查曲率和系统结构；“looks better”是原教学提示，应依据当前结果，不等于证明模型正确。
+# English: Check curvature/systematic structure; the original 'looks better' note is an illustration, not proof for the current data.
+# non-linearity: what we are correcting for primarily.
+# 2a. residuals vs fitted
+m4_log %>% plot(which = 1) # looks a little better - less curved
+```
+
+
+```{r}
+# 中文：原价格模型的残差图，用来对照形状；纵横轴单位与log模型不同，不能直接比较残差绝对大小。
+# English: Compare the original model's pattern; axis units differ from the log model, so absolute residual sizes are not directly comparable.
+# 中文：若曲线减少但仍漏斗状，函数形式可能改善而异方差仍存在；两项诊断要分开解释。
+# English: Reduced curvature with persistent fanning can mean improved mean specification but remaining heteroscedasticity.
+m4 %>% plot(which = 1)
+```
+
+
+```{r}
+# 中文：Ramsey RESET用拟合值平方/立方扩展模型，H0是这两个附加项的系数联合为0。
+# English: Ramsey RESET augments the model with squared/cubed fitted values; H0 is joint zero coefficients for those additions.
+# 中文：power=2:3指定幂次，type="fitted"指定拟合值。若p>0.05，应写“在5%水平未拒绝H0”。
+# English: power=2:3 selects powers and type="fitted" uses fitted values; p>0.05 means failure to reject H0 at 5%.
+# 中文：不能写“接受H0”或“证明函数形式正确”；检验力有限，也不能排除所有遗漏变量/非线性。
+# English: Do not say the null is accepted or specification proven correct; power is finite and not every omitted/nonlinear structure is detected.
+# 2b. Ramsey RESET test / Ramsey RESET 检验
+resettest(m4_log, power = 2:3, type = "fitted") # 中文/English: 按实际p值判断 / interpret the actual p value
+```
+
+
+```{r}
+# 中文：对原m4做相同RESET检验；与上块比较的是不同函数形式的证据，不是用p值大小给模型打分。
+# English: Run the same RESET on original m4; compare specification evidence, not model quality scores based on p-value size.
+# 中文：拒绝H0提示附加项可能有用，但不定位哪个变量有问题，也不能把它当作直接的因果或内生性检验。
+# English: Rejection suggests useful added structure without identifying the offending predictor or directly testing causality/endogeneity.
+resettest(m4, power = 2:3, type = "fitted")
+```
+
+
+```{r}
+# 中文：which=2是残差的正态Q-Q图；看中部和尾部是否偏离参考线，而非检查原price是否正态。
+# English: which=2 is a normal Q-Q plot of residuals; assess centre/tails relative to the reference line, not normality of raw price.
+# 中文：对数变换可改善但不保证正态；残差非正态本身不必然使外生条件下OLS系数有偏。
+# English: Logging may help but does not guarantee normality; non-normal residuals alone need not bias OLS under exogeneity.
+# 3. Normality of residuals
+m4_log %>% plot(which = 2) # looks better
+```
+
+```{r}
+# 中文：原模型Q-Q图对照；更直的点列表示更接近正态，但不要只根据外观声称全部推断都有效。
+# English: Compare the original model's Q-Q plot; a straighter pattern suggests normality without validating every inference assumption.
+# 中文：杠杆等于1或稀少类别可能引发警告，需单独核查，而不是静默忽略。
+# English: Leverage-one/sparse-category warnings require investigation rather than silent dismissal.
+m4 %>% plot(which = 2)
+```
+
+
+```{r}
+# 中文：再次观察log模型的残差图，此次关注散布宽度是否随拟合值增加/减少。
+# English: Revisit log-model residuals, focusing now on whether spread changes with fitted values.
+# 中文：同方差关注条件方差，不等同于残差正态或平滑线平直；这几个假设彼此不同。
+# English: Homoscedasticity concerns conditional variance and differs from normality or a flat mean smooth.
+# Heteroscedasticity
+# 4a. residuals vs fitted
+m4_log %>% plot(which = 1) # looks better
+```
+
+
+```{r}
+# 中文：原模型的方差模式作为对照。两图尺度不同，应比较相对漏斗形态而不是残差数值大小。
+# English: Compare the original variance pattern using relative fanning rather than raw residual magnitudes on different scales.
+# 中文：价格上下限筛选可能产生边界结构，需结合BP检验和实质解释。
+# English: Price truncation can create boundaries; combine visual evidence with BP and substantive interpretation.
+m4 %>% plot(which = 1) # compare
+```
+
+
+```{r}
+# 中文：Breusch–Pagan检验的H0是条件误差方差恒定；bptest默认studentized版本。
+# English: Breusch-Pagan tests constant conditional error variance, using the studentised version by default.
+# 中文：小p值提示异方差；大p值只是未拒绝。原注释“still got issues”需由实际输出支持。
+# English: Small p values suggest heteroscedasticity; large values mean non-rejection. The original note requires actual-output support.
+# 中文：异方差本身不必然使系数有偏，但常规标准误可能偏高或偏低；稳健标准误是下一步推断处理。
+# English: Heteroscedasticity alone need not bias coefficients, but conventional SEs can be too high or low; robust SEs address that inference issue.
+# 4b. Breusch-Pagan test
+m4_log %>% bptest() # still got issues
+```
+
+
+```{r}
+# 中文：m5移除评分，仍以log-price为因变量；这是新的模型设定，不只是修正标准误。
+# English: m5 removes review score while retaining log-price; this changes model specification, not merely SEs.
+# 中文：评分可能受价格/期待影响是一个实质性内生性假设，不能只凭负系数或不显著p值决定删除。
+# English: Scores being affected by price/expectations is a substantive endogeneity concern, not established by a negative or insignificant coefficient.
+# 中文：去掉变量可能引入遗漏变量偏误；且原先仅评分缺失的记录可能重新进入m5，模型比较应核对样本数。
+# English: Dropping a variable can introduce omitted-variable bias and admit records missing only scores, so check sample changes.
+# 中文：变更后需重新做影响、函数形式、残差分布、方差与共线性检查；此文件未全部重新调用，不能声称已全部通过。
+# English: Repeat influence, specification, distribution, variance and collinearity checks; this file does not rerun them all, so no blanket 'passed' conclusion follows.
+# drop review scores
+
+m5 <- listings %>%
+  mutate(log_price = log(price)) %>%
+  lm(log_price ~ room_type + property_type + bathrooms + bedrooms + accommodates,
+     data = .)
+```
+
+
+```{r}
+# 中文：sandwich提供vcovHC等稳健协方差估计；install.packages前有#，所以不会自动安装。
+# English: sandwich supplies robust covariance estimators such as vcovHC; the commented install line is inactive.
+# 中文：此处仅加载包，m5系数仍与此前完全相同；下一块才计算替代协方差。
+# English: Loading the package leaves m5's coefficients unchanged; the next chunk computes an alternative covariance matrix.
+# install.packages("sandwich") - do this in the console ***
+library("sandwich") # you would normally load this in your intial setup chunk
+```
+
+
+```{r}
+# 中文：vcovHC(m5,type="HC0")计算White型异方差稳健协方差矩阵，HC0不作自由度/杠杆有限样本修正。
+# English: vcovHC(m5,type="HC0") computes White's heteroscedasticity-consistent covariance without HC1/HC2/HC3-style finite-sample/leverage corrections.
+# 中文：coeftest使用这个矩阵重新计算标准误、t统计量和p值；点估计不变。
+# English: coeftest uses that covariance for SEs, t statistics and p values; coefficient estimates remain unchanged.
+# 中文：m5_SE是检验结果矩阵，不是一个新拟合的lm模型；R²/拟合值仍属于m5。
+# English: m5_SE is a coefficient-test result matrix, not a new fitted lm object; R-squared/fitted values still belong to m5.
+# 中文：HC0依赖适当的大样本和观测独立等条件，不解决内生性、错误函数形式、空间或房东聚类相关。
+# English: HC0 relies on suitable large-sample/independence conditions and does not fix endogeneity, misspecification or spatial/host clustering.
+# 中文：不应选择能产生较小p值的标准误；稳健方案应依据数据结构和分析设计选择。
+# English: Choose inference methods from the data structure/design, not whichever gives smaller p values.
+# White's robust standard errors for m5 / m5 的 White 型稳健标准误
+m5_SE <- coeftest(m5, vcov = vcovHC(m5, type = "HC0"))
+m5_SE # print out the result
+```
+
+
+```{r}
+# 中文：summary(m5)仍返回常规同方差标准误；与m5_SE对照的是同一模型的两种推断，不是两个不同系数模型。
+# English: summary(m5) still reports conventional homoscedastic SEs; compare two inference methods for the same fitted coefficients, not two different models.
+# 中文：估计值应相同，SE/t/p可能不同；显著性变化既可能增加也可能减少，以实际输出为准。
+# English: Estimates should match while SE/t/p values can differ; significance can increase or decrease, as shown by actual output.
+# 中文：最终报告需说明使用哪种协方差、样本数及剩余限制；常规HC0并不能宣布模型“完全稳健”或具有因果解释。
+# English: Report the covariance choice, sample size and remaining limitations; HC0 alone does not establish a fully robust or causal model.
+m5 %>% summary() # compare both models
+```

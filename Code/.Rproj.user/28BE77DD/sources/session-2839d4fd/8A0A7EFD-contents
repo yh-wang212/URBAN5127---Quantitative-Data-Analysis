@@ -1,0 +1,194 @@
+---
+title: "Lab_3_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# 1. Load in our libraries (here just the tidyverse)
+library(tidyverse)
+
+# 2.  Read in our data (as we did in Lab Tutorial 1)
+listings <- read_csv("listings_edinburgh.csv")
+```
+
+
+```{r}
+# Note: # remember to check your file path is the same as mine above.
+
+# 3. changes from Tutorials 1-2:
+
+# Tutorial 1: coerce room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type)) # one line of code now
+
+
+# Tutorial 2: filter out any extreme or questionable values
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+```
+
+
+```{r}
+glimpse(listings) # check our variable data types
+```
+
+
+```{r}
+listings %>%
+  ggplot(aes(price)) +
+  geom_histogram() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+
+```{r}
+# Layer 1 
+
+listings %>%
+  ggplot(aes(price)) 
+```
+
+
+```{r}
+ggplot(listings, aes(price))
+```
+
+
+```{r}
+# Layer 1 + Layer 2
+
+listings %>%
+  ggplot(aes(price)) + # adding another layer using the '+' symbol
+  geom_histogram() # Layer 2 will add the type of plot we want
+```
+
+
+```{r}
+# Layer 1 + Layer 2 + Layer 3
+
+listings %>%
+  ggplot(aes(price)) + # adding the values we want to plot
+  geom_histogram() + # adding the type of plot we want
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+
+```{r}
+listings %>%
+  ggplot(aes(bathrooms)) + # adding the values we want to plot
+  geom_histogram() + # adding the type of plot we want
+  labs(title = "Distribution of bathrooms of Airbnb listings in Edinburgh",
+       x = "Number of bathrooms",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+
+```{r}
+listings %>%
+  ggplot(aes(price, fill = room_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+
+```{r}
+# A histogram of review_scores_rating 
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(review_scores_rating)) +
+  geom_histogram() +
+  expand_limits(x = 0) + # otherwise won't start at zero
+  labs(title = "Distribution of average review score of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+
+```{r}
+# boxplot of room_type
+listings %>% 
+  ggplot(aes(room_type)) +
+  geom_boxplot()
+```
+
+
+```{r}
+# bar plot of room_type
+listings %>% 
+  ggplot(aes(room_type)) +
+  geom_bar()
+```
+
+
+```{r}
+# Density plot of reviews by room types:
+
+listings %>%
+  ggplot(aes(review_scores_rating, fill = room_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of review ratings of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+
+```{r}
+# Boxplot of reviews by room types:
+
+listings %>%
+  drop_na(review_scores_rating) %>% 
+  ggplot(aes(x = review_scores_rating, y = room_type)) +
+  geom_boxplot() +
+  labs(title = "Distribution of review ratings of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Type of Room",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+
+```{r}
+# Density plot of reviews by property types:
+
+listings %>%
+  drop_na(review_scores_rating) %>% 
+  ggplot(aes(review_scores_rating, fill = property_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of review ratings of Airbnb listings in Edinburgh",
+       x = "Review score (out of 100)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Property type")
+```
+
+
+```{r}
+# have a quick check of how many levels we have:
+levels(listings$property_type)
+```

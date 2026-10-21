@@ -1,0 +1,307 @@
+---
+title: "Lab_2_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 2：描述统计与数据清理 / Descriptive statistics and data cleaning
+
+中文：本文件对应 Tutorial 2，先重建数据和变量类型，再检查数值范围、处理缺失值、筛选房源，最后制作频数表及分组描述统计。原练习代码保持不变，说明同时记录代码的实际行为和解释时需要注意的限制。
+
+English: This file follows Tutorial 2: recreate the data and types, inspect numerical ranges, handle missing values, filter listings, and produce frequency tables and grouped summaries. The original exercise code is unchanged; the notes explain both its behaviour and its interpretation limits.
+
+中文：运行前需安装 `tidyverse`，并使 `listings_edinburgh.csv` 位于工作目录（通常是此 Rmd 所在的 `Code` 文件夹）。按顺序从上到下运行；后面的 `listings <- ...` 会覆盖内存中的原数据，重新读取 CSV 才能恢复最初版本。教材结果依赖所用数据版本；以实际输出为准。
+
+English: Install `tidyverse` first and make the CSV available in the working directory, normally this Rmd's `Code` folder. Run chunks from top to bottom. Later assignment to `listings` overwrites the in-memory data; reload the CSV to start again. Workbook results depend on the data version, so use the actual output.
+
+## 0. 设置与重建数据 / Setup and data preparation
+
+```{r setup, include=FALSE}
+# 中文：本设置块会运行但不显示；echo=TRUE 让后续报告保留分析代码，便于复现。
+# English: This setup chunk runs without being shown; echo=TRUE displays later analysis code for reproducibility.
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# 中文：library() 在本次会话加载 tidyverse；read_csv() 根据相对路径读取 CSV 并推断列类型。
+# English: library() loads tidyverse for this session; read_csv() imports the relative-path CSV and infers column types.
+# 中文：<- 将结果保存在 listings；两个 mutate() 分别把房间类型和物业类型转换为因子，供后续分类分析使用。
+# English: <- stores the result as listings; the two mutate() calls convert room and property types to factors for categorical analysis.
+# 中文：转换不会永久修改磁盘文件；factor() 使用类别水平，而不是将文字转换为可直接计算的数量。
+# English: These conversions do not change the disk file; factor() represents levels rather than measurable numeric quantities.
+# Step 1: Load the tidyverse package(need to do this EACH time you open up R Studio)
+library(tidyverse)
+
+# Step 2: Read in our data: we've loaded the tidyverse, so we can use the read_csv function from the tidyverse now...
+listings <- read_csv("listings_edinburgh.csv")
+
+# Step 3: After inspeting our data, we had to coerce or change some of our variables using the mutate() function:
+listings <- mutate(listings, room_type = factor(room_type))
+listings <- mutate(listings, property_type = factor(property_type))
+```
+
+
+```{r}
+# 中文：核对行列数、每列类型及示例值；room_type、property_type 应为 <fct>，price 等应为数值。
+# English: Check dimensions, types, and example values; room_type and property_type should be <fct>, while price should be numeric.
+# 中文：glimpse() 只检查和打印，不会清理数据，也不会自动更正异常值。
+# English: glimpse() inspects and prints; it does not clean the data or automatically correct unusual values.
+glimpse(listings)
+```
+
+## 1. 描述统计与缺失值 / Summary statistics and missing values
+
+中文：最小值和最大值用于了解范围；均值是总和除以观测数，容易受极端值影响；中位数是排序后的中间位置，通常对极端值更稳健。这些统计量描述当前样本，不自动说明任何组间差异的因果关系。
+
+English: The minimum and maximum describe the range. The mean is the sum divided by the number of observations and is sensitive to extreme values; the median is the middle of the ordered distribution and is usually more robust. These statistics describe the current sample and do not establish causal differences between groups.
+
+```{r}
+# 中文：summarise() 将多行数据压缩成汇总行；未指定列名时，输出列名直接来自表达式，如 mean(price)。
+# English: summarise() reduces rows to summary values; unnamed expressions become column names such as mean(price).
+# 中文：这些基础函数默认不忽略 NA；只要参与计算的向量有缺失值，结果通常就是 NA。
+# English: These base functions do not ignore NA by default; a missing value in the vector generally makes the result NA.
+# 中文：若看到价格 0 或很大的最大值，应查阅数据定义、记录和分布；不能仅凭数值异常就认定记录错误。
+# English: A zero or very high price warrants checking documentation, records, and distributions; an unusual value is not automatically an error.
+summarise(listings, min(price), max(price), mean(price), median(price))
+```
+
+
+```{r}
+# 中文：%>% 将左边对象作为右边函数的第一个参数；本例与上一个汇总基本等价，但调整了结果列的顺序。
+# English: %>% passes the left-hand object as the next function's first argument; this is equivalent to the previous summary with reordered columns.
+# 中文：没有 <-，因此只打印汇总结果，listings 本身仍保存逐条房源记录。
+# English: There is no assignment, so the summary is printed and listings retains the individual listing records.
+# 1. Price 
+
+listings %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+# 中文：对 bedrooms 使用相同四个统计函数；NA 结果提示需要处理缺失，不代表卧室数为 0。
+# English: Apply the same four functions to bedrooms; NA results indicate missing-data handling is needed, not zero bedrooms.
+# 中文：均值可以不是整数，因为它是多个房源卧室数的平均值，而不是某套房源的卧室数。
+# English: The mean need not be an integer because it averages counts across listings rather than describing one listing.
+# 2. Bedrooms
+listings %>%
+  summarise(min(bedrooms), median(bedrooms), mean(bedrooms), max(bedrooms))
+```
+
+
+```{r}
+# 中文：汇总 bathrooms；NA 表示未知或未记录，和记录为 0 的浴室数是不同概念。
+# English: Summarise bathrooms; NA means missing or unknown and is distinct from a recorded value of zero.
+# 中文：浴室数据可含 0.5 等编码，先核对数据定义；无需为了描述统计而强制转为整数。
+# English: Bathroom values can include codes such as 0.5; check their definition rather than forcing integers for summary statistics.
+# 3. Bathrooms
+listings %>%
+  summarise(min(bathrooms), median(bathrooms), mean(bathrooms), max(bathrooms))
+```
+
+
+```{r}
+# 中文：drop_na(price) 仅排除 price 缺失的行，再对剩余价格进行汇总；其他列的缺失不会触发此处删除。
+# English: drop_na(price) removes only rows with missing price before summarising; missing values in other columns do not trigger this removal.
+# 中文：本管道未赋值回 listings，因此排除只作用于当前汇总，不永久改变 listings。
+# English: The pipeline is not assigned back, so removal affects this summary only and does not alter listings.
+# 中文：drop_na() 不会排除价格 0、9999 等非缺失数值；异常值与 NA 必须分别判断。
+# English: drop_na() does not remove nonmissing values such as 0 or 9999; unusual values and NA require separate decisions.
+# Let's drop the missing values using drop_na()
+
+# 1. Price 
+
+listings %>% 
+  drop_na(price) %>% 
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+# 中文：只使用 bedrooms 非缺失的房源；本块样本可能与 price 和 bathrooms 各自汇总的样本不同。
+# English: Use listings with observed bedrooms only; this sample can differ from those used for the price and bathroom summaries.
+# 中文：若要各变量使用相同样本，应在同一步对全部所需变量做完整案例筛选，见下方 pivot_longer() 示例。
+# English: For a common sample across variables, require complete cases jointly, as demonstrated below with pivot_longer().
+# 2. Bedrooms
+listings %>%
+  drop_na(bedrooms) %>% 
+  summarise(min(bedrooms), median(bedrooms), mean(bedrooms), max(bedrooms))
+```
+
+
+```{r}
+# 中文：只排除 bathrooms 为 NA 的行；0 浴室仍保留，是否合理应由数据说明和房源背景决定。
+# English: Exclude only NA bathrooms; zero bathrooms remain and should be assessed using definitions and listing context.
+# 中文：这种缺失删除会改变参与计算的样本；不能默认缺失房源与非缺失房源完全相同。
+# English: Dropping missing observations changes the analysis sample; do not assume missing and observed listings are otherwise identical.
+# 3. Bathrooms
+listings %>%
+  drop_na(bathrooms) %>% 
+  summarise(min(bathrooms), median(bathrooms), mean(bathrooms), max(bathrooms))
+```
+
+
+```{r}
+# 中文：select() 先保留三列，随后无参数的 drop_na() 要求这三列全部非缺失（完整案例）。
+# English: select() retains three columns; drop_na() with no arguments then requires all three to be observed (complete cases).
+# 中文：pivot_longer(1:3, ...) 将前三列转成长表：variable 记录原列名，默认 value 列记录对应数值。
+# English: pivot_longer(1:3, ...) reshapes those columns into a long table: variable stores the old names and the default value column stores values.
+# 中文：每套完整房源贡献三行；group_by(variable) 后各变量各算一行统计，输出通常为三行。
+# English: Each complete listing contributes three rows; group_by(variable) then yields one summary per variable, normally three rows.
+# 中文：由于这里联合删除缺失，结果不保证与前面分别 drop_na(单列) 的汇总完全相同。
+# English: Joint missing-data removal means these results need not exactly match the earlier column-by-column summaries.
+listings %>%
+  select(price,bedrooms,bathrooms) %>%
+  drop_na() %>%
+  pivot_longer(1:3, names_to = "variable") %>%
+  group_by(variable) %>%
+  summarise(min(value), median(value), mean(value), max(value))
+```
+
+## 2. 排序检查异常值 / Sorting to inspect unusual values
+
+中文：下面的排序用于检查数据质量，未赋值的管道不会改变 `listings` 的原始顺序。`arrange()` 在本地数据中将 NA 放到最后，即使用 `desc()` 也一样；因此“取末尾”有时会先看到 NA，而不是最大的有效值。
+
+English: The following sorts inspect data quality. Without assignment they do not alter the original order of `listings`. For local data, `arrange()` places NA last, including with `desc()`, so the last rows can contain missing values rather than the largest observed values.
+
+```{r}
+# 中文：按 price 从小到大排序并打印；tibble 默认只显示部分行和列，但数据并没有因此被截断。
+# English: Sort price ascending and print it; a tibble normally displays only some rows and columns without truncating the underlying data.
+# 中文：可检查最低价格是否符合数据定义；排序本身不删除或改写价格。
+# English: Check whether low prices fit the data definition; sorting itself neither removes nor changes prices.
+# lowest to highest
+arrange(listings, price) 
+```
+
+
+```{r}
+# 中文：desc(price) 表示按价格降序，较大的非缺失价格出现在前面，便于检查极端高价记录。
+# English: desc(price) orders observed prices from high to low, making extreme high-price records easier to inspect.
+# 中文：极端值可能是录入错误、特殊房源或真实高价，需要结合其他变量核查。
+# English: An extreme value may be an entry error, a special listing, or a real high price; inspect other variables before deciding.
+# highest to lowest
+arrange(listings, desc(price)) 
+```
+
+
+```{r}
+# 中文：先按价格升序，再用 head(10) 只显示前十行；这十行是当前样本中价格最低的一端。
+# English: Sort by price ascending and use head(10) to show the first ten rows at the low-price end of the current sample.
+# 中文：head() 的参数是要保留的行数；这里保留整行，便于同时检查房源名称、类型和其他特征。
+# English: head() specifies the number of rows to keep; keeping full rows helps inspect listing names, types, and other characteristics.
+# these will be the cheapest
+listings %>%
+  arrange(price) %>%
+  head(10)
+```
+
+
+```{r}
+# 中文：按价格升序后取最后二十行；当 price 没有 NA 时，这是最高价二十条，内部仍按升序排列。
+# English: Take the last twenty rows after ascending price order; with no missing prices these are the highest twenty, still in ascending order.
+# 中文：若存在 price 的 NA，它们会进入末尾，不能把所有结果直接当作最高有效价格。
+# English: Missing prices enter the tail if present, so not every returned row is necessarily a highest observed price.
+# look at the last twenty properties
+# these will be the most expensive
+listings %>%
+  arrange(price) %>%
+  tail(20)
+```
+
+
+```{r}
+# 中文：此处实际排序的是 bathrooms（不是 bedrooms）；取最少浴室数的前二十条房源进行人工核查。
+# English: This actually sorts bathrooms, not bedrooms, and inspects the first twenty listings at the low-bathroom end.
+# 中文：0 值可能有特定业务含义，例如设施编码；不能在缺乏数据字典时把 0 直接当作 NA。
+# English: Zero may have a specific data meaning, such as a facilities code; do not automatically treat it as NA without documentation.
+# We'll sort bathrooms from low to high again, and look at the first twenty observations:
+
+listings %>% arrange(bathrooms) %>% 
+  head(20)
+```
+
+
+```{r}
+# 中文：升序后的 tail(20) 会同时包括高浴室数和排在末尾的 NA；它不保证只返回最大的二十个非缺失值。
+# English: tail(20) after ascending order can include both high bathroom counts and trailing NA; it does not guarantee the twenty largest observed values.
+# 中文：检查高值时还需参照 accommodates、bedrooms、property_type，判断其是否符合房源规模。
+# English: Assess high counts alongside accommodates, bedrooms, and property_type to judge whether they match the listing's scale.
+# let's look at the higher end - those properties with the most bathrooms:
+
+listings %>% arrange(bathrooms) %>% 
+  tail(20)
+```
+
+
+```{r}
+# 中文：filter() 内逗号连接的条件为逻辑“且”；这里只保留 25 <= price <= 1000 且 bathrooms <= 5 的房源。
+# English: Comma-separated filter() conditions are combined with AND; retain 25 <= price <= 1000 and bathrooms <= 5.
+# 中文：边界值 25、1000 和 5 均被保留；不是“删除五间及以上”，而是删除超过五间的房源。
+# English: The boundary values 25, 1000, and 5 are retained; bathroom counts above five, rather than five and above, are excluded.
+# 中文：drop_na() 再要求三列完整；filter() 对结果为 NA 的条件也不保留相应行。
+# English: drop_na() additionally requires the three columns to be complete; filter() also excludes rows whose conditions evaluate to NA.
+# 中文：<- 覆盖 listings，因此之后所有汇总都基于清理后的样本；阈值属于本练习的分析决策，而非通用异常值标准。
+# English: <- overwrites listings, so all later summaries use the cleaned sample; these cutoffs are exercise choices, not universal outlier rules.
+# 中文：价格单位应查阅数据说明；数字阈值本身不包含货币转换，也不会因教程使用 £ 或 $ 标签而改变。
+# English: Verify currency from the data documentation; these numeric cutoffs perform no currency conversion regardless of £ or $ labels in the workbook.
+# so let's keep (a) prices greater than or equal to £25 (b) prices £1,000 or under (c) five bathrooms or under 
+
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+```
+
+## 3. 频数、百分比和分组统计 / Frequencies, percentages, and grouped summaries
+
+```{r}
+# 中文：count(room_type) 按房间类别计算房源数，输出类别列和计数列 n；不是计算类别的总种类数。
+# English: count(room_type) counts listings within each category and returns the category and n; it does not count the number of distinct categories.
+# 中文：n / sum(n) * 100 的分母是清理后频数表中的总房源数，round(2) 保留两位小数。
+# English: n / sum(n) * 100 uses the cleaned table's total count as the denominator; round(2) keeps two decimal places.
+# 中文：百分比四舍五入后之和可能略偏离 100；此处 percent 是数值，没有附加百分号字符串。
+# English: Rounded percentages may not sum to exactly 100; percent remains numeric rather than a string containing a percent sign.
+listings %>%
+  count(room_type) %>%
+  mutate(percent = (n / sum(n)*100) %>% round(2))
+```
+
+
+```{r}
+# 中文：用同样函数重新汇总清理后价格；最小值和最大值应落在保留区间内，借此核对筛选是否生效。
+# English: Resummarise cleaned prices; minimum and maximum should lie within the retained interval, providing a check on filtering.
+# 中文：与最初结果比较可观察极端价格对均值的影响，但差异同时反映了被删除记录和缺失处理。
+# English: Compare with the initial summary to assess sensitivity to extreme prices; differences also reflect excluded records and missing-data handling.
+# simple summary of price (see Section 1 above)
+listings %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+# 中文：group_by(property_type) 将房源按物业类别分组；summarise() 在每个组内分别计算价格统计量。
+# English: group_by(property_type) groups listings by property category; summarise() computes price statistics separately within each group.
+# 中文：输出行数对应实际参与分析的组数；小组的均值可能很不稳定，不能只比较均值而忽略组样本量。
+# English: Rows correspond to groups represented in the analysis; means from very small groups can be unstable, so consider sample sizes when comparing them.
+# 中文：类别均价差异仍可能受到房源容量、位置等因素影响，这里是描述性结果。
+# English: Category price differences may also reflect capacity, location, and other characteristics; these are descriptive results.
+# We can now see if price varies by property type:
+
+listings %>%
+  group_by(property_type) %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```
+
+
+```{r}
+# 中文：按 room_type 汇总，每一行代表一种房间类型；全部统计量都使用已筛选后的 listings。
+# English: Summarise by room_type, with one row per room category; every statistic uses the already filtered listings.
+# 中文：比较均值与中位数帮助识别偏态或高价尾部；少量高价房源可明显拉高均值，尤其在小样本组中。
+# English: Comparing mean and median helps identify skew or a high-price tail; a few costly listings can raise the mean substantially, especially in small groups.
+# 中文：分组描述统计不等于显著性检验；是否显著及其假设将在后续推断教程中讨论。
+# English: Grouped descriptive statistics are not significance tests; inferential tests and their assumptions are covered in later tutorials.
+#  Make a table showing the summary statistics for price broken down by room_type.
+
+listings %>%
+  group_by(room_type) %>%
+  summarise(min(price), median(price), mean(price), max(price))
+```

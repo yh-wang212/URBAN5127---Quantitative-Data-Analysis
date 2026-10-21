@@ -1,0 +1,147 @@
+---
+title: "Lab_5_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+###############################
+# 1. load all libraries
+###############################
+
+library(tidyverse)
+
+###############################
+# 2. read in your data 
+###############################
+listings <- read_csv("listings_edinburgh.csv") 
+```
+
+
+```{r}
+###############################
+# 3. select what variables you need 
+###############################
+
+# we don't need to do this.
+
+###############################
+# 4. filter your variables
+###############################
+
+# Tutorial 2: filter out any extreme or questionable values
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+
+###############################
+# 5. coerce and relabel your variables
+###############################
+
+# Tutorial 1: coerce room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+
+
+```{r}
+# 1. Create a new subset of your data which excludes shared rooms.
+
+listings_subset <- filter(listings, room_type != "Shared room") 
+
+# or using the tidyverse pipeline method (recommended):
+listings_subset <- listings %>% 
+  filter(room_type != "Shared room") 
+```
+
+
+```{r}
+# quick check: use visualisation skills from last week
+listings_subset %>%
+  ggplot(aes(price, room_type)) + # x axis = numeric variable, y = factor variable
+  geom_boxplot()
+```
+
+
+```{r}
+listings_subset <- listings %>% 
+  filter(room_type != "Shared room") %>% 
+  droplevels() # drops any category (or 'level') with zero values
+
+# quick check
+levels(listings_subset$room_type)
+```
+
+
+```{r}
+listings_subset %>%
+  ggplot(aes(price, fill = room_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+
+```{r}
+# 2. Create a table showing the mean and standard deviation of price by room_type.
+
+listings_subset %>%
+  group_by(room_type) %>%
+  summarise(mean(price), sd(price)) 
+```
+
+
+```{r}
+listings_subset %>%
+  group_by(room_type) %>%
+  summarise(mean_price = mean(price), standard_deviation = sd(price))
+```
+
+
+```{r}
+library(knitr) # remember all libraries get loaded in the setup chunk
+
+listings_subset %>%
+  group_by(room_type) %>%
+  summarise(mean_price = mean(price) , standard_deviation = sd(price)) %>% 
+   kable() 
+```
+
+
+```{r}
+# recreate changes but exclude outliers: price <=$500
+
+# Tutorial 1: coerce room_type from character to factor
+listings2 <- mutate(listings,
+                    room_type = factor(room_type))
+
+# Tutorial 2: filter out any extreme or questionable values: price <=$500
+listings2 <- filter(listings2,
+                    price >= 25, price <= 500, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+
+listings_subset2 <- listings2 %>% 
+  filter(room_type != "Shared room") 
+
+# check standard deviation now
+listings_subset2 %>%
+  group_by(room_type) %>%
+  summarise(mean(price), sd(price)) # makes more sense
+```
+
+
+```{r}
+# 3. Is the difference in price statistically significant?
+t.test(price ~ room_type, data = listings_subset)
+```
+

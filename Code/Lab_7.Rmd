@@ -1,0 +1,133 @@
+---
+title: "Lab_7_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+install.packages("texreg")
+```
+
+
+```{r}
+# Build model 1
+m1 <- listings %>%
+  lm(price ~ room_type, 
+     data = .) 
+
+# And pass to summary function to see regression output
+m1 %>% summary()
+```
+
+
+```{r}
+levels(listings$room_type)
+```
+
+
+```{r}
+# 3. Is the difference in price statistically significant?
+listings_subset <- filter(listings, room_type != "Shared room") 
+
+t.test(price ~ room_type, data = listings_subset)
+```
+
+
+```{r}
+# Build model 2 and then pass to summary function
+m2 <- listings %>%
+  lm(price ~ room_type + property_type,
+     data = .) 
+
+m2 %>%  summary()
+```
+
+
+```{r}
+# refactor reference level: recode to 'Apartment' for ease of interpretation
+
+listings$property_type <- relevel(listings$property_type, ref = "apartment") 
+
+# Build model 2 again and then pass to summary functionA
+m2 <- listings %>%
+  lm(price ~ room_type + property_type,
+     data = .) 
+
+m2 %>%  summary()
+```
+
+
+```{r}
+listings <- listings %>% 
+  mutate(property_type = fct_collapse(property_type,
+                                      bespoke = c("Aparthotel", "Barn", "Boat", "Casa particular (Cuba)", "Earth house", "Hut", "Loft", "Tiny house", "Windmill", "Other" ),
+                                      apartment = c("Apartment", "Bed and breakfast", "Guest suite", "Serviced apartment", "Chalet", "Condominium"),
+                                      house = c("Bungalow", "Cottage", "Guesthouse", "House", "Townhouse", "Villa"),
+                                      hotel = c("Boutique hotel", "Hotel"),
+                                      rustic = c("Cabin", "Camper/RV", "Campsite", "Farm stay", "Hostel", "Tent")
+                                       )
+      )
+
+# check
+fct_count(listings$property_type)
+```
+
+
+```{r}
+m2 <- listings %>%
+  lm(price ~ room_type + property_type,
+     data = .) 
+
+m2 %>%  summary()
+```
+
+
+```{r}
+# model 3
+m3 <- listings %>%
+  lm(price ~ room_type + property_type + bathrooms + bedrooms + accommodates,
+     data = .) 
+
+m3 %>%
+  summary()
+```
+
+
+```{r}
+library(texreg)
+
+m3 <- listings  %>%  lm(price ~ room_type + property_type + bathrooms +
+bedrooms, data = .)
+
+# htmlreg(list(m1, m2, m3))
+
+screenreg(list(m1, m2, m3))
+```
+
+
+```{r}
+m4 <- listings %>% lm(price ~ room_type + property_type + bathrooms +
+bedrooms + accommodates + review_scores_rating, data = .)
+
+m4 %>% summary()
+```
+
+
+```{r}
+screenreg(list(m1, m2, m3, m4))
+```
+
+
+```{r}
+screenreg(list(m1, m2, m3, m4),
+          stars = 0.05,
+          digits = 2, 
+          caption = "Table 2: Regression results. Dependent variable: Price",
+          caption.above = TRUE,
+          groups = list("Room Type" = 2:3, "Property Type" = 4:7)
+        )
+
+```
+

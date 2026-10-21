@@ -1,0 +1,59 @@
+---
+title: "Lab_1_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# you must run this in the console not the script
+# install.packages("tidyverse") 
+```
+
+
+```{r}
+# load the tidyverse package 
+library(tidyverse)
+```
+
+
+```{r}
+read_csv("listings_edinburgh.csv")
+```
+
+
+```{r}
+# read in the dataset
+listings  <- read_csv("listings_edinburgh.csv")
+```
+
+
+```{r}
+# look at your dataset: 
+View(listings)
+glimpse(listings)
+```
+
+
+```{r}
+# change room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type))
+```
+
+
+```{r}
+glimpse(listings)
+```
+
+
+```{r}
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+

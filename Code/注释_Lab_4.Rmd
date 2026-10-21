@@ -1,0 +1,785 @@
+---
+title: "Lab_4_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 4：数值与分类变量可视化 / Numeric and categorical visualisation
+
+中文：结合 Tutorial 4，逐块说明数据清理、箱线图、散点图、因子排序以及条形图位置参数。原代码和代码块顺序均保留，容易误读的轴标题、默认设置及数据边界在注释中澄清。
+
+English: Following Tutorial 4, the notes explain cleaning, boxplots, scatterplots, factor ordering and bar positioning chunk by chunk. Original statements and chunk order are retained; annotations clarify misleading labels, defaults and data boundaries.
+
+中文：按从上到下的顺序运行。数据文件 `listings_edinburgh.csv` 应位于运行目录；原 setup 含安装语句，执行时会尝试安装包。配套教程见 [Tutorial 4](../Markdown/Tutorial_4.md)。
+
+English: Run from top to bottom. Place `listings_edinburgh.csv` in the execution directory; the original setup includes a package installation that runs when executed. See [Tutorial 4](../Markdown/Tutorial_4.md).
+
+## 1. 全局设置与包 / Global options and packages
+
+```{r setup, include=FALSE}
+# 中文：include=FALSE 使本块照常执行但不在输出文档显示代码或结果；echo=TRUE 使后续代码块默认显示代码。
+# EN: include=FALSE runs this chunk while hiding its code and results; echo=TRUE displays code in later chunks by default.
+# 中文：knitr:: 用命名空间访问 knitr，$set() 设置全局代码块选项。tidyverse 提供数据整理与 ggplot2；scales 提供刻度标签工具。
+# EN: knitr:: accesses the package namespace and $set() configures global chunk options. tidyverse provides data tools and ggplot2; scales provides label formatters.
+# 中文：原代码中的 install.packages("gridExtra") 在每次运行本块或 Knit 时都会尝试安装，可能需要网络、写权限与CRAN镜像；常规做法是在控制台安装一次。这里保留原语句。
+# EN: The original install.packages("gridExtra") runs whenever this chunk executes or is knitted and may require network access, write permission and a CRAN mirror. Normally install once in the console; the original statement is retained.
+# 中文：本文件绘图保留原有美元符号；标签不会转换货币，实际计价单位必须以数据来源说明为准。
+# EN: The original dollar signs are retained in plot labels. A label does not convert currencies; establish the actual unit from the data documentation.
+
+
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("gridExtra")
+library(tidyverse)
+library(scales)
+
+
+```
+
+## 2. 读取数据 / Read the data
+
+```{r}
+# 中文：library(tidyverse) 将包加载到当前会话；安装与加载是两件事，重开会话后仍需要加载。
+# EN: library(tidyverse) attaches packages to the current session. Installation and loading are different; load again in a new session.
+# 中文：read_csv() 从当前工作目录读取同名CSV为tibble，<- 将结果保存为 listings；应确保文件路径正确。
+# EN: read_csv() reads the CSV relative to the working directory into a tibble; <- stores it as listings. Check that the path resolves correctly.
+# 中文：本块重复加载 tidyverse 通常无害；读取会重新创建 listings，覆盖当前会话中同名对象。
+# EN: Loading tidyverse again is usually harmless; reading the CSV recreates listings and overwrites an existing object with that name.
+
+
+# load in our libraries
+library(tidyverse)
+
+# Read in our data
+listings <- read_csv("listings_edinburgh.csv") 
+```
+
+## 3. 重建数据清理 / Recreate data cleaning
+
+```{r}
+# 中文：mutate() 修改列，factor() 把房间和物业类型编码为分类变量；赋值回 listings 才会保存改变。
+# EN: mutate() modifies columns and factor() encodes room and property type as categorical variables; assignment back to listings preserves the change.
+# 中文：filter() 的多个条件以逻辑“且”组合：25≤price≤1000 且 bathrooms≤5；阈值是教程的分析选择。
+# EN: Multiple filter() conditions are combined with logical AND: 25≤price≤1000 and bathrooms≤5. These thresholds are tutorial analysis choices.
+# 中文：%>% 把左侧数据传给右侧函数；drop_na(price, bedrooms, bathrooms) 只保留这三列均非缺失的记录，不保证评分也无缺失。
+# EN: %>% passes data to the next function; drop_na(price, bedrooms, bathrooms) retains records complete on those three columns, not necessarily on review ratings.
+# 中文：这里覆盖 listings，因此之后图表都基于已筛选样本；筛选可能改变分布，不应把所有被删除值都视为错误。
+# EN: This overwrites listings, so later plots use the filtered sample. Filtering changes distributions and does not establish that every excluded value is an error.
+
+
+# recreate the changes from Lab Tutorials 1-2:
+
+# Tutorial 1: coerce room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+
+
+# Tutorial 2: filter out any extreme or questionable values
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+```
+
+## 4. 核对数据结构 / Inspect the structure
+
+```{r}
+# 中文：glimpse() 输出行列数、列名、类型以及部分值；重点确认 room_type 和 property_type 为 <fct>，price 为数值。
+# EN: glimpse() displays dimensions, names, types and example values; check that room_type and property_type are <fct> and price is numeric.
+# 中文：它只检查和打印，不修改数据；行数取决于当前CSV和此前筛选，未必等于网页示例。
+# EN: It inspects and prints without modifying data. The number of rows depends on the CSV and previous filtering and may differ from the webpage.
+
+
+glimpse(listings) # check our variable data types
+```
+
+## 5. 按房间类型比较价格 / Compare price by room type
+
+```{r}
+# 中文：aes(room_type, price) 把分类变量映射到x、价格映射到y；geom_boxplot() 为每类计算一个箱线图。
+# EN: aes(room_type, price) maps category to x and price to y; geom_boxplot() calculates a boxplot for each category.
+# 中文：箱内横线为中位数，箱体为第1至第3四分位数；须延伸到距箱体1.5×IQR以内最远观测，外部点是候选离群值。
+# EN: The central line is the median and the box spans Q1–Q3. Whiskers extend to the most extreme observations within 1.5×IQR; points beyond are potential outliers.
+# 中文：离群点不自动等于数据错误。labs() 只设置标题、坐标和来源说明，不改变数值或计价单位。
+# EN: An outlier is not automatically a data error. labs() changes titles, axes and source labels, not values or currency units.
+
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 6. 对数价格坐标 / Logarithmic price scale
+
+```{r}
+# 中文：scale_y_log10() 用10为底转换价格轴：相同距离表示相同比率，压缩大值；数据仍须为正数。
+# EN: scale_y_log10() transforms the price scale to base 10: equal distances represent equal ratios and large values are compressed; prices must be positive.
+# 中文：坐标刻度通常仍以原价格值标注；它不是删除高价记录，也不是把底层 listings$price 永久改为对数。
+# EN: Tick labels generally show original price values. This neither removes expensive listings nor permanently transforms listings$price.
+# 中文：尺度转换在箱线图统计计算前发生，因此须和离群点判断可能与原尺度不同；比较中位数和相对差异时要说明尺度。
+# EN: Scale transformation occurs before boxplot statistics, so whiskers and outlier flags can differ from the raw scale. State the scale when comparing medians and relative differences.
+
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 7. 卧室数直方图 / Histogram of bedrooms
+
+```{r}
+# 中文：geom_histogram() 将数值分箱并统计每个区间的记录数，默认分箱数通常为30。
+# EN: geom_histogram() bins numeric values and counts observations within intervals; the default commonly uses 30 bins.
+# 中文：卧室数是离散计数，默认分箱未必直观；本图用于和后面的条形图比较，不能把空箱直接解释为缺失数据。
+# EN: Bedrooms is a discrete count, so default bins may be awkward. Compare with later bar charts; empty bins do not directly represent missing data.
+
+listings %>%
+  ggplot(aes(bedrooms)) +
+  geom_histogram() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+## 8. 卧室数计数条形图 / Count bars for bedrooms
+
+```{r}
+# 中文：geom_bar() 默认使用 stat_count，直接计算每个不同卧室数出现的次数，无须提供y。
+# EN: geom_bar() uses stat_count by default, counting each distinct bedroom value without a supplied y aesthetic.
+# 中文：当前 bedrooms 仍为数值，x轴是连续刻度；图形不把卧室数重新分箱，与直方图的区间计数不同。
+# EN: bedrooms remains numeric, so x uses a continuous scale. The bars count distinct values rather than histogram intervals.
+
+listings %>%
+  ggplot(aes(bedrooms)) +
+  geom_bar() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+## 9. 把卧室数作为类别绘图 / Plot bedrooms as categories
+
+```{r}
+# 中文：factor(bedrooms) 在这条管道中临时把卧室数转成分类变量，使每个存在的卧室数有独立x轴标签。
+# EN: factor(bedrooms) temporarily converts bedroom counts to categories within this pipeline, giving each observed value its own x-axis label.
+# 中文：没有 <- listings 赋值，因此原数据中的 bedrooms 保持原类型；没有观测的类别默认不显示。
+# EN: There is no assignment back to listings, so the original bedrooms column retains its type. Unobserved categories are not shown by default.
+
+listings %>%
+  mutate(bedrooms = factor(bedrooms)) %>%
+  ggplot(aes(bedrooms)) +
+  geom_bar() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+## 10. 核对卧室类别频数 / Check bedroom frequencies
+
+```{r}
+# 中文：count(bedrooms) 对每个类别统计记录数，输出类别列和新列n；每行代表一个卧室数，而非一套房源。
+# EN: count(bedrooms) counts records per category, returning the category and a new n column. Each row represents a bedroom count, not an individual listing.
+# 中文：本结果可用来辨别哪些卧室数实际未出现；factor() 和 count() 在此都未覆盖 listings。
+# EN: Use the table to identify which bedroom counts are absent; neither factor() nor count() here overwrites listings.
+
+listings %>%
+  mutate(bedrooms = factor(bedrooms)) %>% 
+  count(bedrooms)
+```
+
+## 11. 补齐零频数类别 / Complete zero-count categories
+
+```{r}
+# 中文：先去掉原有 bedrooms 缺失，再显式定义0至10共11个因子水平；超出0:10的值会在转换时变成新的NA。
+# EN: First remove existing missing bedrooms, then define the 11 factor levels 0–10. Values outside 0:10 become new NAs during conversion.
+# 中文：count() 统计n，complete(bedrooms, fill=list(n=0)) 为未出现的既定类别补行并把其n设为0；不是把缺失的卧室数估计为0。
+# EN: count() computes n; complete(bedrooms, fill=list(n=0)) adds absent predefined categories and sets their counts to zero. It does not impute unknown bedroom counts as zero.
+# 中文：geom_col() 使用已计算的n作为柱高，区别于自动计数的 geom_bar()；前面的drop_na不能消除factor转换新产生的NA。
+# EN: geom_col() uses the supplied n values as bar heights, unlike the automatic counts of geom_bar(). The earlier drop_na cannot remove NAs created afterward by factor conversion.
+
+listings %>%
+  drop_na(bedrooms) %>% 
+  mutate(bedrooms = factor(bedrooms, levels = 0:10)) %>%
+  count(bedrooms) %>%
+  complete(bedrooms, fill = list(n = 0)) %>%
+  ggplot(aes(bedrooms, n)) +
+  geom_col() +
+  labs(title = "Distribution of bedrooms",
+       x = "Bedrooms",
+       y = "Count")
+```
+
+## 12. 价格与评分散点图 / Price–rating scatterplot
+
+```{r}
+# 中文：drop_na(review_scores_rating) 仅在本管道中去除缺失评分；每个点对应一套具有评分的房源。
+# EN: drop_na(review_scores_rating) removes missing ratings only for this pipeline; each point is a listing with an observed rating.
+# 中文：评分在x轴、价格在y轴；geom_point() 显示关系、离群点和数据密集程度，不能仅凭图形认定因果。
+# EN: Rating is on x and price on y. geom_point() reveals associations, outliers and concentration, but the plot alone does not establish causality.
+# 中文：相同坐标的记录会重叠，图上可见点数可能小于样本量。
+# EN: Records at identical coordinates overlap, so the number of visible points can be smaller than the sample size.
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(review_scores_rating, price)) +
+  geom_point() +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 13. 用透明度显示重叠 / Reveal overlap with transparency
+
+```{r}
+# 中文：alpha=0.1 设置每个点10%不透明度；alpha=0完全透明、alpha=1完全不透明。
+# EN: alpha=0.1 sets each point to 10% opacity; alpha=0 is invisible and alpha=1 is fully opaque.
+# 中文：重叠较多处颜色更深，有助观察密集区域；改变alpha不会改变样本量、价格或评分。
+# EN: Overlapping areas become darker, helping show concentration. Changing alpha does not alter sample size, prices or ratings.
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(review_scores_rating, price)) +
+  geom_point(alpha = 0.1) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 14. 抖动散点图 / Jittered scatterplot
+
+```{r}
+# 中文：geom_jitter(alpha=0.1) 在绘图时给坐标加入少量随机位移以减少重叠，适用于许多重复评分的情形。
+# EN: geom_jitter(alpha=0.1) adds small random plotting offsets to reduce overlap, useful when many ratings repeat.
+# 中文：抖动不修改源数据，却会使图上位置偏离精确观测值；未设置随机种子时重新绘制的位置可能不同。
+# EN: Jitter does not modify the source data, but plotted positions no longer equal exact observations. Positions may change on rerunning without a random seed.
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price)) +
+  geom_jitter(alpha = 0.1) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 15. 加入整体平滑趋势 / Add an overall smooth
+
+```{r}
+# 中文：geom_smooth(se=FALSE) 根据原始映射的数据拟合平滑曲线，并隐藏置信带；不会对显示用的随机抖动重新拟合。
+# EN: geom_smooth(se=FALSE) fits a smooth to the original mapped data and hides its confidence band; it does not fit the random jittered display positions.
+# 中文：未显式指定method时方法由数据量等决定，不能一概称为直线回归；曲线描述样本中的总体趋势。
+# EN: With no method specified, the smoother depends on factors such as data size; it is not necessarily linear regression. The curve describes an overall sample trend.
+# 中文：趋势可能受房间类型和其他变量混杂影响；关联强弱与因果解释需要额外分析。
+# EN: The trend may be confounded by room type and other variables; strength and causal interpretation require further analysis.
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price)) +
+  geom_jitter(alpha = 0.1) +
+  geom_smooth(se = FALSE) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 16. 按房间类型着色 / Colour by room type
+
+```{r}
+# 中文：aes(colour=room_type) 将类别映射为点的颜色并生成图例；放在aes内表示随数据变化。
+# EN: aes(colour=room_type) maps categories to point colours and creates a legend; placing it inside aes makes colour data dependent.
+# 中文：结合jitter和透明度比较各类房源的分布；某颜色点较多可能只是该组样本量较大。
+# EN: Combine jitter and transparency to compare distributions. More points in a colour may simply reflect a larger group sample size.
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price, colour = room_type)) +
+  geom_jitter(alpha = 0.1) +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 17. 查看房间类型样本量 / Count room-type groups
+
+```{r}
+# 中文：count(room_type) 返回每个房间类型的房源数量n，帮助判断散点图中颜色密度差异是否来自组大小。
+# EN: count(room_type) returns the number of listings n in each room type, helping assess whether colour density differences reflect group size.
+# 中文：这是当前已清理 listings 的计数，未排除评分缺失；散点图的实际使用人数因此可能更少。
+# EN: These counts use the cleaned listings without removing missing ratings, so the scatterplot can contain fewer records.
+
+listings %>% 
+  count(room_type)
+```
+
+## 18. 比较各组平滑趋势 / Compare group smooths
+
+```{r}
+# 中文：colour=room_type 为点和继承该映射的 geom_smooth() 分组，每种房间类型拟合一条曲线。
+# EN: colour=room_type groups both points and the smooth layer that inherits the mapping, fitting a curve for each room type.
+# 中文：未设置se=FALSE，因此默认显示平滑曲线的置信带；它不是单个房源价格的预测区间。
+# EN: Without se=FALSE, a confidence band for the smooth is shown by default; it is not an individual listing prediction interval.
+# 中文：样本很少的类别曲线更不稳定；不能把组间曲线差别直接视为统计显著或因果差异。
+# EN: Curves for small groups are less stable; visual differences do not directly establish statistical significance or causality.
+
+listings %>%
+  drop_na(review_scores_rating) %>%
+  ggplot(aes(x = review_scores_rating, y= price, colour = room_type)) +
+  geom_jitter(alpha = 0.1) +
+  geom_smooth() +
+  labs(title = "Price versus average review score",
+       x = "Average review score",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 19. 物业类型条形图 / Property-type bar chart
+
+```{r}
+# 中文：property_type 为类别，geom_bar() 自动统计各类房源数，柱高代表频数。
+# EN: property_type is categorical; geom_bar() automatically counts listings in each category, so height represents frequency.
+# 中文：类别多或名称长时x轴标签容易重叠；后面通过翻转坐标和调整因子水平改善可读性。
+# EN: Many categories or long names can overlap on x. Later chunks improve readability by flipping coordinates and ordering factor levels.
+
+listings %>%
+  ggplot(aes(x = property_type)) +
+  geom_bar() +
+    labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 20. 检查物业类型水平 / Inspect property levels
+
+```{r}
+# 中文：levels() 返回因子的类别标签而非各类别频数；检查具体拼写和种类有助解释图形。
+# EN: levels() returns factor labels rather than category frequencies. Check spelling and categories to interpret plots.
+# 中文：已经过滤掉所有记录的类别仍可能保留为未使用的水平；列表长度不一定等于当前有观测的类别数。
+# EN: Levels whose records were removed can remain unused; the number of levels need not equal the number of observed categories.
+
+levels(listings$property_type)
+```
+
+## 21. 翻转坐标以展示长标签 / Flip coordinates for long labels
+
+```{r}
+# 中文：coord_flip() 将图形显示的x和y方向互换，使物业名称竖排在左边、频数水平延伸。
+# EN: coord_flip() exchanges displayed x and y directions, placing property names vertically on the left and counts horizontally.
+# 中文：仅翻转坐标并未按频数排序；原注释“ordered”不准确，类别仍依赖原因子水平。
+# EN: Flipping alone does not sort by frequency; the original 'ordered' comment is inaccurate because categories still follow their factor levels.
+# 中文：labs(x=..., y=...) 仍对应翻转前映射的轴，显示位置会随坐标翻转改变。
+# EN: labs(x=..., y=...) refers to the pre-flip mapped axes; their displayed positions change after flipping.
+
+# ordered: low to high
+listings %>%
+  ggplot(aes(x = property_type)) +
+  geom_bar() +
+  coord_flip() +
+    labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 22. 按频数排列因子水平 / Order factor levels by frequency
+
+```{r}
+# 中文：fct_infreq(property_type) 按出现次数从多到少重排因子水平，不修改每条房源所属类别。
+# EN: fct_infreq(property_type) orders factor levels from most to least frequent without changing category membership.
+# 中文：coord_flip() 后，第一个因子水平位于底部，所以不能只用“从左到右”描述显示顺序；应实际核对柱图方向。
+# EN: After coord_flip(), the first factor level appears at the bottom, so left-to-right language does not describe the displayed order; inspect the chart direction.
+# 中文：未给 listings 赋值，因子排序只用于这一幅图。
+# EN: Without assignment to listings, the reordered factor is used only in this plot.
+
+# ordered: low to high
+listings %>%
+  ggplot(aes(x = fct_infreq(property_type))) +
+  geom_bar() +
+  coord_flip() +
+    labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 23. 反转频数顺序 / Reverse frequency order
+
+```{r}
+# 中文：fct_rev() 反转 fct_infreq() 的水平顺序，配合coord_flip后把频数最多的类别放在图上方。
+# EN: fct_rev() reverses the levels produced by fct_infreq(); with coord_flip(), the most frequent categories appear at the top.
+# 中文：排序改变展示次序，不改变计数或类别名称；与上一幅图比较可确认方向。
+# EN: Ordering changes display order rather than counts or labels. Compare with the previous plot to verify direction.
+
+# ordered: low to high
+listings %>%
+  ggplot(aes(x = fct_rev(fct_infreq(property_type)))) +
+  geom_bar() +
+  coord_flip() +
+  labs(title = "Distribution of property type",
+       x = "Property types",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 24. 统计街区房源数 / Count listings by neighbourhood
+
+```{r}
+# 中文：count(neighbourhood_cleansed) 按街区汇总，n为每个街区的房源数；字符列也可直接计数，无须先转因子。
+# EN: count(neighbourhood_cleansed) aggregates listings by neighbourhood, with n as the count. Character columns can be counted without factor conversion.
+# 中文：输出当前样本的街区频数表，此时通常按街区标签排列，尚未按n排名。
+# EN: The result is a frequency table for the current sample, typically ordered by neighbourhood label rather than by n.
+
+listings %>%
+  count(neighbourhood_cleansed)
+```
+
+## 25. 按街区频数降序 / Rank neighbourhood counts
+
+```{r}
+# 中文：arrange(-n) 按n的负值升序排列，等价于按原始n降序；第一行是房源最多的街区。
+# EN: arrange(-n) sorts ascending on negative n, equivalent to descending counts; the first row has the most listings.
+# 中文：这是对汇总表排序，原始 listings 的行顺序未改变；并列频数的先后不能解释为数量差异。
+# EN: This sorts the summary table without changing the row order of listings. Tie order does not indicate a difference in counts.
+
+listings %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n)
+```
+
+## 26. 提取前十街区 / Select the top ten neighbourhoods
+
+```{r}
+# 中文：先按n降序，再head(10)取前10行，得到房源数最多的十个街区。
+# EN: Sort n descending, then use head(10) to take the first ten rows: the ten neighbourhoods with the most listings.
+# 中文：顺序很关键：先head再排序不能保证选中全样本前十；若第十名有并列，此写法仍只选10行。
+# EN: Order matters: taking head before sorting does not guarantee the overall top ten. A tie at tenth place still yields only ten rows.
+
+listings %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n) %>% 
+  head(10)
+```
+
+## 27. 从升序表尾部提取前十 / Take the top ten from an ascending table
+
+```{r}
+# 中文：arrange(n) 从少到多排序，再tail(10)取末10行；同样选数量最多的十个街区，但显示次序是升序。
+# EN: arrange(n) sorts counts from low to high, then tail(10) takes the last ten: the largest ten counts shown in ascending order.
+# 中文：它与降序后head(10)目标相近，显示方向相反；若截点并列，具体选中的街区也可能不同。
+# EN: Its goal is similar to descending sort plus head(10), but the display order reverses; ties at the cutoff can also change which neighbourhoods are selected.
+
+listings %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(n) %>% 
+  tail(10)
+```
+
+## 28. 再次查看街区类型 / Recheck neighbourhood data type
+
+```{r}
+# 中文：glimpse(listings) 再次核对 neighbourhood_cleansed 目前通常是 <chr>，物业与房间类型为 <fct>。
+# EN: glimpse(listings) rechecks that neighbourhood_cleansed is typically <chr> and property and room types are <fct>.
+# 中文：这是绘图前结构检查；字符型能计数，但显式因子水平能控制条形图类别的顺序。
+# EN: This is a structure check before plotting. Character columns can be counted, while explicit factor levels control bar-chart category order.
+
+glimpse(listings)
+```
+
+## 29. 准备有序街区汇总 / Prepare an ordered neighbourhood table
+
+```{r}
+# 中文：内层管道把街区转因子、按出现频数排序并反转；因子水平控制后续图形顺序，和表格行排序不同。
+# EN: The inner pipeline converts neighbourhoods to a factor, orders by frequency and reverses levels. Factor order controls a later plot and is distinct from table row order.
+# 中文：外层count()生成n，再arrange(-n)和head(10)选择数量最多的街区。
+# EN: The outer count() creates n; arrange(-n) and head(10) select the most frequent neighbourhoods.
+# 中文：转换只发生在这条管道，未覆盖原始 listings；字符街区转因子是为了控制绘图顺序。
+# EN: Conversion is local to this pipeline and does not overwrite listings; the factor is used to control plotting order.
+
+listings %>%
+  mutate(neighbourhood_cleansed = factor(neighbourhood_cleansed) %>% 
+           fct_infreq() %>% 
+           fct_rev()) %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n) %>% 
+  head(10) 
+```
+
+## 30. 绘制前十街区 / Plot the top ten neighbourhoods
+
+```{r}
+# 中文：沿用上块排序并选择十个街区，再把汇总表传给ggplot；aes(neighbourhood_cleansed,n)显式提供柱高。
+# EN: Reuse the ordering and top-ten selection, then pass the summary to ggplot; aes(neighbourhood_cleansed,n) explicitly supplies bar heights.
+# 中文：geom_col()画已有n，不应改成默认geom_bar()再重复计数；coord_flip()使长街区名称易读。
+# EN: geom_col() plots the existing n values; default geom_bar() would count the summary rows instead. coord_flip() improves long-label readability.
+# 中文：labs(x="",y="")只隐藏轴标题，刻度和类别标签仍保留。
+# EN: labs(x="",y="") hides axis titles while retaining ticks and category labels.
+
+listings %>%
+  mutate(neighbourhood_cleansed = factor(neighbourhood_cleansed) %>% 
+           fct_infreq() %>% 
+           fct_rev()) %>%
+  count(neighbourhood_cleansed) %>%
+  arrange(-n) %>% 
+  head(10) %>% # now pipe to ggplot
+  ggplot(aes(neighbourhood_cleansed, n)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Airbnb listings by neighbourhood",
+       subtitle = "Top 10 neighbourhoods", 
+       x = "",
+       y = "",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 31. 回顾基础箱线图 / Revisit the basic boxplot
+
+```{r}
+# 中文：再次绘制房间类型与价格箱线图，作为后续主题和组合图的共同参照。
+# EN: Draw room-type versus price boxplots again as a baseline for later themes and combined plots.
+# 中文：相同数据与映射应产生相同箱线图统计量；重复绘图本身不会更改数据。
+# EN: The same data and mappings should yield the same boxplot statistics; redrawing does not modify the data.
+
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 32. 使用简洁主题 / Apply a minimal theme
+
+```{r}
+# 中文：theme_minimal() 更改背景、网格线等外观，不改变样本、映射或箱线图的统计结果。
+# EN: theme_minimal() changes backgrounds and grid styling, not the sample, mappings or boxplot statistics.
+# 中文：ggplot层用+连接；与数据管道%>%用途不同，labs()仍用于设置图形文字。
+# EN: Connect ggplot layers with +, which serves a different role from the data pipeline %>%; labs() sets plot text.
+
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 33. 叠加箱线图与小提琴图 / Overlay a boxplot and violin
+
+```{r}
+# 中文：geom_boxplot(width=0.5)控制箱体宽度；geom_violin(alpha=0.2)以半透明密度形状显示分布。
+# EN: geom_boxplot(width=0.5) controls box width; geom_violin(alpha=0.2) displays a translucent density shape.
+# 中文：小提琴宽度反映估计密度，默认不能用总面积直接比较组样本量；箱线图补充中位数和四分位数。
+# EN: Violin width represents estimated density; its default area does not directly compare group sample sizes. Boxplots add medians and quartiles.
+# 中文：后加的小提琴画在前层之上；对数轴会在统计计算前转换数值，形状与原尺度不同。
+# EN: The later violin layer is drawn on top. The log scale transforms values before statistical computation, so shapes differ from the raw scale.
+
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot(width = 0.5) +
+  geom_violin(alpha = 0.2) +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 34. 微调组合图 / Refine the combined plot
+
+```{r}
+# 中文：箱体width=0.1比上一图更窄，减少遮挡；alpha=0.2的小提琴保留整体分布轮廓。
+# EN: width=0.1 makes boxes narrower to reduce overlap, while the alpha=0.2 violin retains the overall distribution shape.
+# 中文：同时保留log10价格轴并应用theme_minimal；主题不改变数据，尺度转换则会影响显示和统计计算。
+# EN: Keep the log10 price scale and apply theme_minimal; the theme changes styling, while the scale affects display and statistical computation.
+# 中文：解释图形时同时说明中位数、离散程度和密度形状，不要把小提琴宽度误当作原始频数。
+# EN: Interpret medians, dispersion and density shape together; do not mistake violin width for raw counts.
+
+listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot(width = 0.1) +
+  geom_violin(alpha = 0.2) +
+  scale_y_log10()  +
+  theme_minimal() +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+```
+
+## 35. 加载图形排版工具 / Load plot-arrangement tools
+
+```{r}
+# 中文：library(gridExtra)使grid.arrange()可直接使用；安装包与加载包不同，前面安装后仍需本步骤。
+# EN: library(gridExtra) makes grid.arrange() available; installing and attaching differ, so this is still required after installation.
+# 中文：如果提示与dplyr有同名函数，这是命名遮蔽提示；必要时用包名::函数名明确选择。
+# EN: A message about shared names with dplyr indicates masking; use package::function to disambiguate when necessary.
+
+#load library
+
+library(gridExtra)
+```
+
+## 36. 并排比较箱线图与小提琴图 / Compare boxplot and violin side by side
+
+```{r}
+# 中文：plot1和plot2分别保存ggplot对象，不是保存图片文件；两者使用相同数据、类别和log10价格轴。
+# EN: plot1 and plot2 store ggplot objects rather than image files; both use the same data, categories and log10 price scale.
+# 中文：第一幅显示中位数、四分位数及离群点，第二幅显示估计分布形状；二者回答的问题不同。
+# EN: The first shows medians, quartiles and outliers; the second shows estimated distribution shape. They answer different questions.
+# 中文：grid.arrange(plot1,plot2,ncol=2)按两列并排显示；原注释第二个“first plot”实际应理解为第二幅图。
+# EN: grid.arrange(plot1,plot2,ncol=2) displays them in two columns; the second original 'first plot' comment refers to the second plot.
+
+# Step 1: Create your first plot
+
+plot1 <- listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_boxplot() +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+
+
+# Step 2: Create your first plot
+
+plot2 <- listings %>%
+  ggplot(aes(room_type, price)) +
+  geom_violin() +
+  scale_y_log10()  +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Room type",
+       y = "Price ($)",
+       caption = "Source: InsideAirbnb.com")
+
+# Step 3: Now compare them side by side using the grid.arrange function from the gridExtra package:
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+## 37. 默认位置与identity比较 / Compare default positioning with identity
+
+```{r}
+# 中文：geom_bar()的默认位置是stack而不是identity；本例没有fill分组，每个房间类型只有一根柱，二者外观通常一样。
+# EN: The default geom_bar() position is stack, not identity. Without a fill grouping here, each room type has one bar, so both plots usually look identical.
+# 中文：position="identity"保留各组原位置，有多个fill组时柱会重叠；stack则把组频数相加堆叠。
+# EN: position="identity" keeps groups at the same position, causing overlap with multiple fill groups; stack adds their counts vertically.
+# 中文：本块覆盖此前plot1和plot2对象，并用grid.arrange()显示频数比较。
+# EN: This overwrites the earlier plot1 and plot2 objects and displays the count comparison using grid.arrange().
+
+# Default
+plot1 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar() + 
+  labs(x = "Room Type", y = "Count")
+
+# Add the position argument in geom_bar() function
+plot2 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar(position = "identity") + # note the quotes
+  labs(x = "Room Type", y = "Count")
+
+# compare them
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+## 38. 重复练习位置参数 / Repeat the positioning comparison
+
+```{r}
+# 中文：此块与上一块可执行代码相同，是原文件保留的重复练习；执行会重新覆盖plot1、plot2并绘制同样结果。
+# EN: This executable block repeats the previous exercise in the original file; it overwrites plot1 and plot2 again and draws the same result.
+# 中文：两图相同的原因仍是没有fill分组，不表示geom_bar()默认position="identity"；默认是stack。
+# EN: The plots match because there is no fill grouping, not because identity is the default. The default is stack.
+
+# Default
+plot1 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar() + 
+  labs(x = "Room Type", y = "Count")
+
+# Add the position argument in geom_bar() function
+plot2 <- listings %>% 
+ggplot(aes(room_type)) +
+  geom_bar(position = "identity") + # note the quotes
+  labs(x = "Room Type", y = "Count")
+
+# compare them
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+## 39. 比例堆叠条形图 / Proportional stacked bars
+
+```{r}
+# 中文：x=room_type按房间类型分柱，fill=property_type按物业类型填充；position="fill"把每柱总高度标准化为1。
+# EN: x=room_type creates room-type bars and fill=property_type divides them by property type; position="fill" normalizes each bar to a total height of 1.
+# 中文：每段表示“该房间类型内部”的物业比例，分母是该room_type的房源数；各柱样本量不一定相同。
+# EN: Each segment is a property proportion within that room type, with that group's listing count as denominator. Bar sample sizes can differ.
+# 中文：原y轴标签Count与实际量不符，本图y是0至1的比例；注释指出问题并保留原代码。
+# EN: The original y label Count does not match the plotted quantity: y is a proportion from 0 to 1. This note identifies the issue while retaining the code.
+
+listings %>% 
+ggplot(aes(x = room_type, fill = property_type)) + # Point 1
+  geom_bar(position = "fill") + # Point 2: note the quotes
+  labs(x = "Room Type", y = "Count")
+```
+
+## 40. 把比例刻度格式化为百分比 / Format proportions as percentages
+
+```{r}
+# 中文：scale_y_continuous(labels=scales::percent)只把0.25显示为25%，未改变底层比例和柱高。
+# EN: scale_y_continuous(labels=scales::percent) displays 0.25 as 25% without changing underlying proportions or bar heights.
+# 中文：scales::指定percent函数的来源；labs(fill=...)重命名图例标题，y="Proportion"准确描述比例。
+# EN: scales:: selects the percent formatter; labs(fill=...) renames the legend title and y="Proportion" correctly describes the measure.
+# 中文：每柱仍合计100%；这种图利于比较构成，但掩盖不同房间类型的总样本量。
+# EN: Each bar still totals 100%. This plot compares composition but hides differences in total group size.
+
+listings %>% 
+ggplot(aes(x = room_type, fill = property_type)) +
+  geom_bar(position = "fill") + 
+  scale_y_continuous(labels = scales::percent) + # Point 3
+  labs(title = "My Title",
+       fill = "Property Type", # Point 2
+    x = "Room Type", 
+    y = "Proportion") # Point 1
+```
+
+
+## 41. 并列分组条形图 / Dodged grouped bars
+
+```{r}
+# 中文：position="dodge"将同一个房间类型内不同物业类型的计数柱并排展示；此时不再按组标准化。
+# EN: position="dodge" places property-type count bars side by side within each room type; groups are no longer normalized.
+# 中文：y轴实际为频数，因此原标签Proportion不准确；各小柱高度可比较绝对数量，不能直接读作百分比。
+# EN: The actual y measure is frequency, so the original Proportion label is inaccurate. Small-bar heights compare absolute counts, not percentages.
+# 中文：类别过多会导致细柱和拥挤图例；应结合前面的计数表理解稀少类别。
+# EN: Many categories produce thin bars and crowded legends; use the earlier frequency tables to interpret rare categories.
+
+listings %>% 
+ggplot(aes(x = room_type, fill = property_type)) +
+  geom_bar(position = "dodge") + 
+    labs(title = "My Title",
+       fill = "Property Type", # Point 2
+    x = "Room Type", 
+    y = "Proportion") # Point 1
+```

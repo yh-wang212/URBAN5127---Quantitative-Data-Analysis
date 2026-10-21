@@ -1,0 +1,531 @@
+---
+title: "Lab_2"
+author: "Plamena Panayotova"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load the tidyverse:
+library(tidyverse)
+# Load haven:
+library(haven)
+
+# Read in the dataset
+listings  <- read_csv("listings_edinburgh.csv")
+
+#To read in other types of data:
+
+# Install haven if not already installed
+#install.packages("haven")
+
+
+# Read the SPSS file:
+#data <- read_sav("path_to_your_file.sav")
+
+# View the data
+# head(data)
+
+```
+
+# QDA Lab 2
+
+## Dataset overview:
+
+```{r}
+
+# Look at your dataset: 
+
+glimpse(listings)
+
+nrow(listings) # What is this?
+ncol (listings) # What is this?
+colnames (listings)
+
+sum(is.na(listings))
+
+
+```
+
+## Inspecting and mutating the categorical variables:
+
+```{r}
+# Change room_type from character to factor
+
+listings <- listings |> mutate(room_type = factor(room_type),
+                   property_type = factor(property_type))
+                   
+# Check levels:
+
+
+class(listings$room_type)
+class(listings$property_type)
+levels(listings$room_type)
+levels(listings$property_type)
+
+
+glimpse(listings)
+
+
+# Another way to convert variables to factor:
+
+# listings <- listings |>
+#   mutate(
+#     across(
+#       c(room_type, property_type), 
+#       as.factor)
+#   )
+
+
+# Check frequencies:
+
+table(listings$room_type)
+
+listings |>
+  count(room_type) |>  # Count frequencies of each level
+  mutate(
+    Percent = round(n / sum(n) * 100, 1),  # Calculate percentage
+    CumulativePercent = cumsum(Percent)  # Calculate cumulative percentage
+  ) |>
+  arrange(room_type) 
+
+
+```
+
+
+## Inspecting, cleaning and summarising the price variable:
+
+
+```{r}
+
+glimpse(listings$price)
+
+sum(is.na(listings$price))
+
+# lowest to highest
+
+listings |> select(price) |> arrange(price)
+
+# What to do with price=0??
+
+listings <- listings |>
+  mutate(price = na_if(price, 0))
+
+```
+
+
+
+```{r}
+
+# highest to lowest
+listings |> select(price)|> arrange(desc(price)) 
+
+
+listings <- listings |>
+  mutate(price = na_if(price, 9999))
+
+# What about the price 12345?
+
+```
+
+
+```{r}
+
+#Let's have another look to check everything's worked:
+
+# these will be the cheapest
+listings |>
+  select(price) |>
+  arrange(price) |>
+  head(10)
+
+# look at the last twenty properties
+# these will be the most expensive
+listings |>
+  select(price) |>
+  arrange(desc(price)) |>
+  head(20)
+
+
+```
+
+
+```{r}
+
+# Summary statistics for price: 
+
+listings |>
+  summarise(min(price), median(price), mean(price), max(price))
+
+# Oops! Something's not right!
+
+sum(is.na(listings$price))
+
+
+```
+
+
+```{r}
+
+# Let's drop the missing values using drop_na()
+
+# 1. Price 
+
+listings |>
+  drop_na(price) |>
+  summarise(min(price), median(price), mean(price), max(price))
+
+# What is the unit of measurement of price?
+
+```
+
+
+## Inspecting, cleaning and summarising the bedrooms variable:
+
+
+```{r}
+
+
+# We'll sort bedrooms from low to high, and look at the first twenty observations:
+
+listings |>
+  arrange(bedrooms) |>
+  head(20)
+
+# Why are there properties with 0 bedrooms?
+
+```
+
+```{r}
+
+# We'll sort bedrooms from high to low, and look at the first twenty observations:
+
+listings |>
+  select(bedrooms) |>
+  arrange(desc(bedrooms)) |>
+  head(20)
+
+# Why are there properties with 13 bedrooms?
+
+```
+
+
+```{r}
+
+# Summarising bedrooms:
+listings |>
+  summarise(min(bedrooms), median(bedrooms), mean(bedrooms), max(bedrooms)) # Why are all fields NAs?
+
+# Oops! Something's not right!
+
+sum(is.na(listings$bedrooms))
+
+
+```
+
+
+```{r}
+
+# Summarising bedrooms:
+listings |>
+  drop_na(bedrooms) |>
+  summarise(min(bedrooms), median(bedrooms), mean(bedrooms), max(bedrooms))
+
+```
+
+## Inspecting, cleaning and summarising the bathrooms variable:
+
+
+```{r}
+
+
+# We'll sort bathrooms from low to high again, and look at the first twenty observations:
+
+listings |>
+  select(bathrooms) |>
+  arrange(bathrooms) |>
+  head(20)
+
+```
+
+
+```{r}
+
+
+# let's look at properties with the most bathrooms:
+
+listings |> 
+  select(bathrooms) |>
+  arrange(desc(bathrooms)) |>
+  head(20)
+
+#What to do with properties that have 9 bathrooms? Look at number of bedrooms and accommodates!
+
+```
+
+
+```{r}
+
+# Summarising bathrooms:
+
+listings |>
+  summarise(min(bathrooms), median(bathrooms), mean(bathrooms), max(bathrooms)) # Why are all fields NAs?
+
+# Oops! Something's not right!
+
+sum(is.na(listings$bathrooms))
+
+
+```
+
+
+```{r}
+
+# Summarising bathrooms:
+
+listings |>
+  drop_na(bathrooms) |>
+  summarise(min(bathrooms), median(bathrooms), mean(bathrooms), max(bathrooms))
+
+```
+
+
+
+## Summary statistics (all variables):
+
+
+```{r}
+
+# Another way:
+
+listings |>
+  summarise(
+    min_value= min(bathrooms, na.rm= TRUE), 
+    median=median(bathrooms, na.rm=TRUE), 
+    mean = mean(bathrooms, na.rm= TRUE), 
+    max_value=max(bathrooms, na.rm=TRUE)
+    )
+
+```
+
+## Summary statistics (another way):
+
+
+```{r}
+
+listings |>
+  select(price,bedrooms,bathrooms) |>
+  drop_na() |>
+  pivot_longer(1:3, names_to = "variable") |>
+  group_by(variable) |>
+  summarise(min(value), median(value), mean(value), max(value))
+
+# The above code produces a summary table where each row corresponds to a variable 
+# (price, bedrooms, bathrooms), and the columns contain the respective 
+# minimum, median, mean, and maximum values for that variable.
+
+#pivot_longer() reshapes the data from wide to long format. pivot_longer() reshapes the data from wide to long format by combining the selected columns (variables) into two columns: variable, which records the original column name, and value, which contains the corresponding observation.
+
+# 1:3 means take columns 1 to 3 (price, bedrooms, bathrooms)
+
+# names_to = "variable" means the names of those columns will go into a new column called "variable"
+
+# By default, the values from those columns go into a new column called "value"
+
+# So instead of this:
+
+# price bedrooms bathrooms (made-up values):
+# 100   2        1
+# 200   3        2
+
+# We get this (made-up values):
+
+# variable    value
+# price       100
+# bedrooms    2
+# bathrooms   1
+# price       200
+# bedrooms    3
+# bathrooms   2
+
+```
+
+
+## Filtering the data:
+
+```{r}
+
+# so let's keep: 
+#(a) prices greater than or equal to £25 
+#(b) prices £1,000 or under 
+#(c) five bathrooms or under 
+# (d) create a cleaned new dataset called listings_clean
+
+
+
+listings_clean <- listings |>
+  filter(price >= 25, price <= 1000, bathrooms <= 5) |>
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+
+# Check if it has worked:
+
+range(listings_clean$price)
+
+
+range(listings_clean$bathrooms)
+```
+
+## Frequency table:
+
+
+```{r}
+
+listings_clean |>
+  count(room_type) |>
+  mutate(percent = (n / sum(n)*100) |> round(2))
+
+
+listings_clean |>
+  count(room_type) |>  # Count frequencies of each level
+  mutate(
+    Percent = round(n / sum(n) * 100, 2),  # Calculate percentage
+    CumulativePercent = round(cumsum(Percent), 2)  # Calculate cumulative percentage
+  ) |>
+  arrange(room_type) 
+
+
+# Adding a TOTAL row at the bottom:
+
+listings_clean %>%
+  count(room_type) %>% # Count frequencies of each level
+  mutate(
+    Percent = round(n / sum(n) * 100, 2),  # Calculate percentage
+    CumulativePercent = round(cumsum(Percent), 2)  # Calculate cumulative percentage
+  ) %>%
+  add_row(
+    room_type = "TOTAL",               # Label for the summary row
+    n = sum(.$n),                      # Total count
+    Percent = 100,                     # Total percentage (should be 100)
+    CumulativePercent = NA             # Cumulative Percent does not apply here
+  ) %>%
+  arrange(room_type)
+
+#NB Here we must use the tidyverse pipe since, unlike the base pipe, it automatically understands that . refers to the data being passed through the pipe.
+
+
+```
+
+## Making a table showing the summary statistics:
+
+```{r}
+
+# simple summary of price (see Section 1 above)
+listings_clean |>
+  summarise(min(price), median(price), mean(price), max(price))
+
+# alternatively:
+
+listings_clean |>
+  summarise(
+    min_price = round(min(price), 2),
+    median_price = round(median(price), 2),
+    mean_price = round(mean(price), 2),
+    max_price = round(max(price), 2)
+  )
+
+
+# We can now see if price varies by property type:
+
+listings_clean |>
+  group_by(property_type) |>
+  summarise(min(price), median(price), mean(price), max(price))
+
+# Arranging by mean for property type:
+
+listings_clean |>
+  group_by(property_type) |>
+  summarise(
+    min= min(price), 
+    median= median(price), 
+    mean= mean(price), 
+    max= max(price)
+    )|>
+  arrange(mean)
+
+
+#  Make a table showing the summary statistics for price broken down by room_type.
+
+listings_clean |>
+  group_by(room_type) |>
+  summarise(min(price), median(price), mean(price), max(price))
+ 
+
+```
+
+
+```{r}
+
+# Custom function for summary statistics:
+
+
+summarize_function <- function(x) {
+  list(
+    Mean = mean(x),
+    Median = median(x),
+    Min = min(x),
+    Max = max(x),
+    Range = diff(range(x)),
+    SD = sd(x),
+    Variance = var(x)
+  )
+}
+
+summarize_function(listings$price)
+
+```
+
+## Saving the cleaned dataset:
+
+```{r}
+
+saveRDS(listings_clean, "listings_clean.rds")
+
+# Next week when we continue the analysis we'll simply run:
+
+#listings_clean <- readRDS("listings_clean.rds")
+
+```
+
+
+## Some useful shortcuts:
+
+```{r}
+#
+
+#rm(list = ls())     # clears objects from environment
+#cat("\014")         # clears the console (Ctrl+L shortcut does the same)
+#graphics.off()      # clears plots
+```
+
+
+
+## Functions re-cap:
+
+**select()** and **mutate()** for working with columns (or variables); \
+**filter()** and **arrange()**: for working with rows (or observations); \
+**group_by()** and **summarise()**: for aggregating and summarising.  
+
+Other functions:\
+**View()** \
+**glimpse()** \
+**head()** \
+**tail()** \ 
+**count()** \
+**drop_na()** \
+**levels()** \
+**factor()** \
+**library()**
+
+

@@ -1,0 +1,279 @@
+---
+title: "Lab_5_ZhejuZhang"
+output: html_document
+date: "2026-10-21"
+---
+
+# Lab 5：两组均值比较与 t 检验 / Two-group means and t-tests
+
+中文：本课先清理房源数据，建立不含共享房的两组子集，比较分布和描述统计，再运行 Welch t 检验。注释说明每一步做什么、为什么做、如何解读输出，并保留全部原执行语句。
+
+English: This lesson cleans listing data, forms a two-group subset excluding shared rooms, compares distributions and descriptive statistics, and runs a Welch t-test. Notes explain purpose, rationale and interpretation while retaining every executable statement.
+
+中文：按顺序运行，并确保 `listings_edinburgh.csv` 可通过当前工作目录找到。显著性、效应大小和因果关系是不同概念；结论取决于样本和检验假设。配套教程见 [Tutorial 5](../Markdown/Tutorial_5.md)。
+
+English: Run sequentially and ensure the working directory resolves `listings_edinburgh.csv`. Significance, effect size and causality are distinct; conclusions depend on the sample and test assumptions. See [Tutorial 5](../Markdown/Tutorial_5.md).
+
+## 1. 文档设置 / Document options
+
+```{r setup, include=FALSE}
+# 中文：include=FALSE表示setup块执行但代码与结果都不显示；echo=TRUE让后续块默认在HTML中展示源代码。
+# EN: include=FALSE executes setup while hiding its code and results; echo=TRUE shows source code in later HTML chunks by default.
+# 中文：本课流程为先描述两组价格，再用Welch两独立样本t检验比较均值；所有结论都应依赖实际输出和抽样设计。
+# EN: The workflow describes prices in two groups before comparing means with a Welch independent-samples t-test; conclusions depend on actual output and sampling design.
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 2. 加载包并读取CSV / Load packages and read the CSV
+
+```{r}
+# 中文：tidyverse提供read_csv、filter、mutate、group_by和ggplot等工具；每个新R会话都需重新加载。
+# EN: tidyverse provides read_csv, filter, mutate, group_by and ggplot; attach it again in each new R session.
+# 中文：read_csv("listings_edinburgh.csv")按工作目录查找文件，返回tibble；<-保存为listings并覆盖同名对象。
+# EN: read_csv("listings_edinburgh.csv") resolves the file relative to the working directory and returns a tibble; <- stores it as listings, overwriting that name.
+# 中文：图文保留原代码的$符号，但文字标签不会兑换货币，实际价格单位需查数据说明。
+# EN: The original $ symbols are retained, but labels do not exchange currencies; confirm the actual price unit from the data documentation.
+
+###############################
+# 1. load all libraries
+###############################
+
+library(tidyverse)
+
+###############################
+# 2. read in your data 
+###############################
+listings <- read_csv("listings_edinburgh.csv") 
+```
+
+
+## 3. 清理与变量类型 / Clean data and define variable types
+
+```{r}
+# 中文：filter()同时保留25≤price≤1000、bathrooms≤5的记录；多个条件以且连接，含NA的条件记录不会保留。
+# EN: filter() keeps records satisfying 25≤price≤1000 and bathrooms≤5 simultaneously; conditions are ANDed and records with missing conditions are not retained.
+# 中文：drop_na(price,bedrooms,bathrooms)进一步要求三列完整；筛选改变分析样本，并非所有被剔除值都是录入错误。
+# EN: drop_na(price,bedrooms,bathrooms) additionally requires completeness on three columns. Filtering changes the analysis sample and does not imply every excluded value is erroneous.
+# 中文：mutate()把room_type和property_type转为因子；后续t检验的分组变量需有两个实际观测组。
+# EN: mutate() converts room_type and property_type to factors; the later t-test grouping variable must have two observed groups.
+# 中文：本块覆盖listings，但尚未排除Shared room；之后创建单独子集来保留这个三组数据对象。
+# EN: This overwrites listings but still includes Shared room; a separate subset is created later to preserve the three-group object.
+
+###############################
+# 3. select what variables you need 
+###############################
+
+# we don't need to do this.
+
+###############################
+# 4. filter your variables
+###############################
+
+# Tutorial 2: filter out any extreme or questionable values
+listings <- filter(listings,
+                   price >= 25, price <= 1000, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+
+###############################
+# 5. coerce and relabel your variables
+###############################
+
+# Tutorial 1: coerce room_type from character to factor
+listings <- mutate(listings,
+                   room_type = factor(room_type),
+                   property_type = factor(property_type))
+```
+
+
+## 4. 建立两组比较子集 / Create a two-group subset
+
+```{r}
+# 中文：!=表示不等于，filter(room_type!="Shared room")删除共享房记录；<-保存为listings_subset，listings本身仍有三组。
+# EN: != means not equal; filter(room_type!="Shared room") removes shared-room records. <- saves listings_subset while listings retains all three groups.
+# 中文：直接函数写法和管道写法功能相同，此处先后执行会用相同结果覆盖同一个子集对象。
+# EN: The direct function and pipeline versions are equivalent; executing both overwrites the same subset object with equivalent data.
+# 中文：filter()删记录通常不删未使用的因子水平，所以后面还用droplevels()清理类别元数据。
+# EN: filter() removes records but usually retains unused factor levels, so droplevels() later cleans category metadata.
+# 中文：排除共享房是为演示两组均值检验，结论因此只针对保留的两类，不能代表所有房间类型。
+# EN: Shared rooms are excluded to demonstrate a two-group means test; the resulting comparison covers only the two retained categories.
+
+# 1. Create a new subset of your data which excludes shared rooms.
+
+listings_subset <- filter(listings, room_type != "Shared room") 
+
+# or using the tidyverse pipeline method (recommended):
+listings_subset <- listings %>% 
+  filter(room_type != "Shared room") 
+```
+
+
+## 5. 可视化两组价格 / Visualise the two price groups
+
+```{r}
+# 中文：aes(price,room_type)把价格放x、房间类型放y，geom_boxplot()自动绘制横向分组箱线图。
+# EN: aes(price,room_type) maps price to x and room type to y; geom_boxplot() draws horizontal group boxplots.
+# 中文：箱内线为中位数、箱为Q1至Q3；须外点是潜在离群值，不自动等于错误，也不代表均值的位置。
+# EN: The inner line is the median and the box spans Q1–Q3; points outside whiskers are potential outliers, not automatically errors or mean markers.
+# 中文：本图先比较分布、偏态和离散程度，不能凭箱体重叠与否直接判定t检验显著性。
+# EN: Use the plot to compare distributions, skew and dispersion; box overlap alone does not determine t-test significance.
+
+# quick check: use visualisation skills from last week
+listings_subset %>%
+  ggplot(aes(price, room_type)) + # x axis = numeric variable, y = factor variable
+  geom_boxplot()
+```
+
+
+## 6. 移除空因子水平并核对 / Drop unused factor levels and check
+
+```{r}
+# 中文：从三组listings重新筛掉Shared room，droplevels()删除因子中没有观测的水平，而不是删除额外的数据行。
+# EN: Starting from three-group listings, remove Shared room again; droplevels() removes unobserved factor levels rather than additional data rows.
+# 中文：levels(listings_subset$room_type)应显示Entire home/apt与Private room；$选择一个数据列，levels()查看类别标签。
+# EN: levels(listings_subset$room_type) should show Entire home/apt and Private room; $ selects the column and levels() lists category labels.
+# 中文：droplevels()作用于整个数据框时会清理其中所有因子列的未使用水平。
+# EN: When applied to the full data frame, droplevels() drops unused levels from all factor columns.
+
+listings_subset <- listings %>% 
+  filter(room_type != "Shared room") %>% 
+  droplevels() # drops any category (or 'level') with zero values
+
+# quick check
+levels(listings_subset$room_type)
+```
+
+
+## 7. 比较价格密度 / Compare price densities
+
+```{r}
+# 中文：aes(price,fill=room_type)按房间类型填色并分组；geom_density()为每组估计平滑概率密度。
+# EN: aes(price,fill=room_type) assigns fill colours and groups by room type; geom_density() estimates a smooth probability density for each group.
+# 中文：alpha=0.5使填充半透明以显示重叠。密度曲线下每组面积通常为1，峰高不是该组房源数。
+# EN: alpha=0.5 makes fills translucent to reveal overlap. Each group density generally integrates to 1; peak height is not group sample size.
+# 中文：原y轴标签Count不准确，实际y为密度；本文件保留代码并明确解释。图中$标签也未转换价格单位。
+# EN: The original y label Count is inaccurate: y is density. The code is retained with this explanation; the $ label also does not convert price units.
+# 中文：密度形状可显示右偏和长尾，但取决于带宽；不能把平滑峰看作精确频数。
+# EN: Density shape can reveal right skew and long tails but depends on bandwidth; smoothed peaks are not exact counts.
+
+listings_subset %>%
+  ggplot(aes(price, fill = room_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of price of Airbnb listings in Edinburgh",
+       subtitle = "Prices restricted to range $25 to $1,000",
+       x = "Price ($)",
+       y = "Count",
+       caption = "Source: InsideAirbnb.com",
+       fill = "Room type")
+```
+
+
+## 8. 计算均值与标准差 / Calculate means and standard deviations
+
+```{r}
+# 中文：group_by(room_type)按房间类型分组，summarise()把每组压缩成一行；mean(price)算均值，sd(price)算样本标准差。
+# EN: group_by(room_type) forms room-type groups and summarise() reduces each to one row; mean(price) is the mean and sd(price) the sample standard deviation.
+# 中文：标准差使用n−1分母，和价格同单位，描述组内离散程度；它不是均值的标准误。
+# EN: Sample SD uses denominator n−1 and the same units as price; it describes within-group dispersion, not the standard error of the mean.
+# 中文：均值±1个标准差仅在近似正态等条件下约覆盖68%观测；右偏价格不能机械套用这个比例。
+# EN: Mean ±1 SD contains about 68% of observations only under conditions such as approximate normality; do not apply that rule mechanically to skewed prices.
+# 中文：这一步未指定na.rm=TRUE，依赖前面price缺失已清理；默认输出列名会采用mean(price)、sd(price)。
+# EN: No na.rm=TRUE is supplied, relying on prior price cleaning; default column names are mean(price) and sd(price).
+
+# 2. Create a table showing the mean and standard deviation of price by room_type.
+
+listings_subset %>%
+  group_by(room_type) %>%
+  summarise(mean(price), sd(price)) 
+```
+
+
+## 9. 给汇总列命名 / Name summary columns
+
+```{r}
+# 中文：mean_price=mean(price)和standard_deviation=sd(price)显式给结果列命名，更便于报告和后续引用。
+# EN: mean_price=mean(price) and standard_deviation=sd(price) explicitly name result columns for clearer reporting and reuse.
+# 中文：与上一块的计算相同，只改变列名；未赋值给新对象，打印汇总表但不修改listings_subset。
+# EN: The calculations match the previous block, changing only names; without assignment, the summary is printed and listings_subset is unchanged.
+# 中文：比较两组均值时同时看标准差和样本量，均值差异本身不等于统计显著或实际重要。
+# EN: When comparing group means, also consider dispersion and sample size; a mean difference alone establishes neither statistical significance nor practical importance.
+
+listings_subset %>%
+  group_by(room_type) %>%
+  summarise(mean_price = mean(price), standard_deviation = sd(price))
+```
+
+
+## 10. 用kable呈现表格 / Present a table with kable
+
+```{r}
+# 中文：library(knitr)加载kable()；把按组汇总结果传给kable()生成适合文档显示的表格。
+# EN: library(knitr) makes kable() available; piping grouped summaries to it creates a table suitable for document output.
+# 中文：kable()只改变显示格式，不重新计算均值或标准差，也不自动设定货币单位、四舍五入位数或表题。
+# EN: kable() changes presentation, not the calculated means or SDs, and does not automatically establish currency units, rounding or captions.
+# 中文：此处保留原加载位置；通常可集中在setup中加载所有包，以明确依赖。
+# EN: The original loading location is retained; generally, attach packages together in setup to make dependencies explicit.
+
+library(knitr) # remember all libraries get loaded in the setup chunk
+
+listings_subset %>%
+  group_by(room_type) %>%
+  summarise(mean_price = mean(price) , standard_deviation = sd(price)) %>% 
+   kable() 
+```
+
+
+## 11. 价格上限500的敏感性比较 / Sensitivity comparison with a 500 price cap
+
+```{r}
+# 中文：listings2从已经清理的listings建立，不是重新读取原始CSV；把价格上限进一步降到500，并保留25下限与浴室限制。
+# EN: listings2 starts from the already cleaned listings, not a reread of the raw CSV; it further lowers the upper price limit to 500 while keeping the lower and bathroom limits.
+# 中文：listings_subset2再排除共享房；最后汇总与之前两组结果比较，观察截尾对均值和标准差的影响。
+# EN: listings_subset2 then excludes shared rooms; compare its summary with earlier two-group results to assess truncation effects on means and SDs.
+# 中文：缩小范围通常会改变离散程度，但标准差大于均值并不“不合理”；截尾不证明被排除房源错误，也会改变研究对象。
+# EN: Restricting the range changes dispersion, but SD exceeding the mean is not inherently invalid. Truncation neither proves excluded listings wrong nor preserves the same target population.
+# 中文：该子集的因子可能仍保留Shared room空水平；此处未再次droplevels。最终t检验用的是原listings_subset，而非listings_subset2。
+# EN: This subset can retain an unused Shared room level because droplevels is not repeated. The final t-test uses the original listings_subset, not listings_subset2.
+
+# recreate changes but exclude outliers: price <=$500
+
+# Tutorial 1: coerce room_type from character to factor
+listings2 <- mutate(listings,
+                    room_type = factor(room_type))
+
+# Tutorial 2: filter out any extreme or questionable values: price <=$500
+listings2 <- filter(listings2,
+                    price >= 25, price <= 500, bathrooms <= 5) %>%
+  drop_na(price, bedrooms, bathrooms) # and drop any missing (na) values
+
+listings_subset2 <- listings2 %>% 
+  filter(room_type != "Shared room") 
+
+# check standard deviation now
+listings_subset2 %>%
+  group_by(room_type) %>%
+  summarise(mean(price), sd(price)) # makes more sense
+```
+
+
+## 12. Welch两独立样本t检验 / Welch independent-samples t-test
+
+```{r}
+# 中文：公式price~room_type表示按room_type比较数值price；data=listings_subset提供两个实际观测类别的数据。
+# EN: The formula price~room_type compares numeric prices across room_type groups; data=listings_subset supplies data with two observed categories.
+# 中文：默认var.equal=FALSE、alternative="two.sided"，因此是Welch双侧检验，允许两组总体方差不同，而非配对t检验。
+# EN: Defaults var.equal=FALSE and alternative="two.sided" give a two-sided Welch test allowing unequal group variances, not a paired test.
+# 中文：H0是两组总体均值差为0，H1是不为0；输出包括t统计量、近似自由度、p值、均值差95%置信区间与两组样本均值。
+# EN: H0 is a zero population mean difference and H1 is a nonzero difference; output includes t, approximate degrees of freedom, p, a 95% CI for the difference and group sample means.
+# 中文：置信区间差值方向依因子水平次序；p<预定显著性水平时拒绝H0，否则不拒绝，不能据此证明H0为真。
+# EN: The factor level order sets the direction of the difference. Reject H0 when p is below the chosen significance level; otherwise fail to reject rather than prove H0.
+# 中文：需考虑观测独立性、分布/样本量和异常值影响；p不是H0为真的概率，也不衡量效应大小。
+# EN: Consider independent observations, distributions/sample size and outliers; p is neither the probability H0 is true nor an effect-size measure.
+# 中文：爱丁堡房源练习样本并非全英国随机样本；不能自动推广到苏格兰或英国所有房源，也不能推断房间类型导致价格变化。
+# EN: The Edinburgh practice data are not a random UK sample; do not automatically generalise to all Scottish/UK listings or infer that room type causes price differences.
+
+# 3. Is the difference in price statistically significant?
+t.test(price ~ room_type, data = listings_subset)
+```
+
