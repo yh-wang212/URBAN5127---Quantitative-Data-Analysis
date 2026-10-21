@@ -1,25 +1,25 @@
 {
-    "id": "8A0A7EFD",
-    "path": "I:/URBAN5127 - Quantitative Data Analysis/Lab/Code/Lab_3.Rmd",
-    "project_path": "Lab_3.Rmd",
+    "id": "1CE6BB5C",
+    "path": "I:/URBAN5127 - Quantitative Data Analysis/Lab/Code/Lab_5.Rmd",
+    "project_path": "Lab_5.Rmd",
     "type": "r_markdown",
-    "hash": "0",
+    "hash": "1824699111",
     "contents": "",
     "dirty": false,
-    "created": 1792613390461.0,
+    "created": 1792613401010.0,
     "source_on_save": false,
-    "relative_order": 6,
+    "relative_order": 7,
     "properties": {
         "source_window_id": "",
         "Source": "Source",
         "last_setup_crc32": ""
     },
     "folds": "",
-    "lastKnownWriteTime": 1792610762,
+    "lastKnownWriteTime": 1792610858,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1792613397435,
+    "last_content_update": 1792613669452,
     "read_only": false,
     "read_only_alternatives": []
 }
