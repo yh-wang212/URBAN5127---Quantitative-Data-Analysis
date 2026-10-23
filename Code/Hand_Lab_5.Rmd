@@ -27,7 +27,7 @@ library(tidyverse)
 library(knitr)
 
 # Set the CSV in the same folder as this Rmd, or adjust the path.
-listings_raw <- read_csv("listings_edinburgh.csv", show_col_types = FALSE)
+listings_raw <- read_csv("listings_clean.rds", show_col_types = FALSE)
 
 # Examine the imported data.
 glimpse(listings_raw)
